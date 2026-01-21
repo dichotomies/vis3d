@@ -1,0 +1,1190 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>COLMAP Point Cloud Visualizer</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #1a1a2e;
+            color: #eee;
+            overflow: hidden;
+        }
+        canvas { display: block; }
+        #info {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 15px 20px;
+            border-radius: 10px;
+            max-width: 300px;
+            z-index: 100;
+        }
+        #info h1 { font-size: 1.2em; margin-bottom: 10px; color: #4fc3f7; }
+        #info p { font-size: 0.9em; line-height: 1.5; color: #bbb; }
+        #stats { margin-top: 10px; padding-top: 10px; border-top: 1px solid #444; }
+        #stats span { display: block; margin: 3px 0; }
+        #controls {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 15px 20px;
+            border-radius: 10px;
+            z-index: 100;
+        }
+        #controls label { display: block; margin: 8px 0; font-size: 0.9em; }
+        #controls input[type="range"] { width: 150px; margin-left: 10px; }
+        #controls input[type="checkbox"] { margin-right: 8px; }
+        #loading {
+            position: fixed;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            background: #1a1a2e;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+            flex-direction: column;
+        }
+        .spinner {
+            width: 50px; height: 50px;
+            border: 4px solid #333;
+            border-top-color: #4fc3f7;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        #loading p { margin-top: 20px; color: #888; }
+        
+        /* Details pane on the right */
+        #details-pane {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            width: 320px;
+            max-height: calc(100vh - 40px);
+            background: rgba(0, 0, 0, 0.85);
+            padding: 20px;
+            border-radius: 10px;
+            z-index: 100;
+            overflow-y: auto;
+            font-size: 0.9em;
+        }
+        #details-pane h2 {
+            font-size: 1.1em;
+            margin-bottom: 15px;
+            color: #4fc3f7;
+            border-bottom: 1px solid #444;
+            padding-bottom: 10px;
+        }
+        #details-pane .detail-row {
+            display: flex;
+            margin: 8px 0;
+            line-height: 1.4;
+        }
+        #details-pane .detail-label {
+            color: #888;
+            min-width: 100px;
+            flex-shrink: 0;
+        }
+        #details-pane .detail-value {
+            color: #eee;
+            word-break: break-all;
+        }
+        #details-pane .detail-section {
+            margin-top: 15px;
+            padding-top: 15px;
+            border-top: 1px solid #333;
+        }
+        #details-pane .detail-section h3 {
+            font-size: 0.95em;
+            color: #81d4fa;
+            margin-bottom: 10px;
+        }
+        #details-pane .camera-thumbnail {
+            width: 100%;
+            max-height: 180px;
+            object-fit: contain;
+            border-radius: 5px;
+            margin-top: 10px;
+            border: 1px solid #444;
+        }
+        #details-pane .matrix-display {
+            font-family: monospace;
+            font-size: 0.8em;
+            background: rgba(255,255,255,0.05);
+            padding: 8px;
+            border-radius: 4px;
+            margin-top: 5px;
+        }
+        #details-pane .hint {
+            color: #666;
+            font-size: 0.85em;
+            font-style: italic;
+            margin-top: 15px;
+        }
+    </style>
+</head>
+<body>
+    <div id="loading">
+        <div class="spinner"></div>
+        <p>Loading point cloud...</p>
+    </div>
+    
+    <canvas id="canvas"></canvas>
+    
+    <!-- Details Pane on the right -->
+    <div id="details-pane">
+        <div id="dataset-details">
+            <h2>📊 Dataset Details</h2>
+            <div class="detail-row">
+                <span class="detail-label">Dataset:</span>
+                <span class="detail-value" id="detail-dataset">Fern</span>
+            </div>
+            <div class="detail-row">
+                <span class="detail-label">Points:</span>
+                <span class="detail-value" id="detail-points">-</span>
+            </div>
+            <div class="detail-row">
+                <span class="detail-label">Cameras:</span>
+                <span class="detail-value" id="detail-cameras">-</span>
+            </div>
+            <div class="detail-section">
+                <h3>Camera Model</h3>
+                <div class="detail-row">
+                    <span class="detail-label">Type:</span>
+                    <span class="detail-value" id="detail-cam-model">-</span>
+                </div>
+                <div class="detail-row">
+                    <span class="detail-label">Resolution:</span>
+                    <span class="detail-value" id="detail-resolution">-</span>
+                </div>
+                <div class="detail-row">
+                    <span class="detail-label">Focal Length:</span>
+                    <span class="detail-value" id="detail-focal">-</span>
+                </div>
+                <div class="detail-row">
+                    <span class="detail-label">Principal Pt:</span>
+                    <span class="detail-value" id="detail-principal">-</span>
+                </div>
+            </div>
+            <p class="hint">💡 Click on a camera to see its details</p>
+        </div>
+        
+        <div id="camera-details" style="display: none;">
+            <h2>📷 Camera Details</h2>
+            <img id="camera-thumb" class="camera-thumbnail" src="" alt="Camera view">
+            <div class="detail-row">
+                <span class="detail-label">Camera ID:</span>
+                <span class="detail-value" id="cam-id">-</span>
+            </div>
+            <div class="detail-row">
+                <span class="detail-label">Image Name:</span>
+                <span class="detail-value" id="cam-image-name">-</span>
+            </div>
+            <div class="detail-section">
+                <h3>Pose (World Coordinates)</h3>
+                <div class="detail-row">
+                    <span class="detail-label">Position:</span>
+                    <span class="detail-value" id="cam-position">-</span>
+                </div>
+                <div class="detail-row">
+                    <span class="detail-label">Quaternion:</span>
+                    <span class="detail-value" id="cam-quaternion">-</span>
+                </div>
+            </div>
+            <div class="detail-section">
+                <h3>Intrinsics</h3>
+                <div class="detail-row">
+                    <span class="detail-label">Resolution:</span>
+                    <span class="detail-value" id="cam-resolution">-</span>
+                </div>
+                <div class="detail-row">
+                    <span class="detail-label">Focal Length:</span>
+                    <span class="detail-value" id="cam-focal">-</span>
+                </div>
+                <div class="detail-row">
+                    <span class="detail-label">Principal Pt:</span>
+                    <span class="detail-value" id="cam-principal">-</span>
+                </div>
+            </div>
+            <button id="close-camera-details" style="margin-top: 15px; padding: 8px 16px; background: #4fc3f7; border: none; border-radius: 5px; color: #000; cursor: pointer; width: 100%;">
+                ← Back to Dataset
+            </button>
+        </div>
+    </div>
+    
+    <div id="info">
+        <h1>🌿 Fern Reconstruction</h1>
+        <p>COLMAP sparse reconstruction visualized in WebGL</p>
+        <div id="stats">
+            <span>Points: <strong id="point-count">-</strong></span>
+            <span>Cameras: <strong id="camera-count">-</strong></span>
+        </div>
+    </div>
+    
+    <div id="controls">
+        <label>
+            Point Size
+            <input type="range" id="point-size" min="1" max="10" value="3" step="0.5">
+        </label>
+        <label>
+            <input type="checkbox" id="show-cameras" checked>
+            Show Cameras
+        </label>
+        <label>
+            Camera Size
+            <input type="range" id="camera-size" min="0.5" max="5" value="1" step="0.25">
+        </label>
+        <label>
+            <input type="checkbox" id="auto-rotate">
+            Auto Rotate
+        </label>
+        <label>
+            <input type="checkbox" id="free-rotation" checked>
+            Free Rotation (no axis lock)
+        </label>
+        <label>
+            Movement Speed
+            <input type="range" id="move-speed" min="0.05" max="1" value="0.15" step="0.05">
+        </label>
+        <div style="margin-top: 12px; padding-top: 10px; border-top: 1px solid #444; font-size: 0.85em; color: #888;">
+            <strong style="color: #aaa;">Navigation:</strong><br>
+            W/S - Forward/Backward<br>
+            A/D - Left/Right<br>
+            Mouse - Look around<br>
+            Scroll - Zoom
+        </div>
+    </div>
+
+    <script>
+    // ============== WebGL Point Cloud Viewer (No Dependencies) ==============
+    
+    const canvas = document.getElementById('canvas');
+    const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
+    
+    if (!gl) {
+        document.getElementById('loading').innerHTML = '<p style="color:#f44">WebGL not supported</p>';
+        throw new Error('WebGL not supported');
+    }
+
+    // Shader sources
+    const pointVertexShader = `
+        attribute vec3 aPosition;
+        attribute vec3 aColor;
+        uniform mat4 uMVP;
+        uniform float uPointSize;
+        varying vec3 vColor;
+        void main() {
+            vColor = aColor;
+            gl_Position = uMVP * vec4(aPosition, 1.0);
+            gl_PointSize = uPointSize;
+        }
+    `;
+
+    const pointFragmentShader = `
+        precision mediump float;
+        varying vec3 vColor;
+        void main() {
+            vec2 coord = gl_PointCoord - vec2(0.5);
+            if (length(coord) > 0.5) discard;
+            gl_FragColor = vec4(vColor, 1.0);
+        }
+    `;
+
+    const lineVertexShader = `
+        attribute vec3 aPosition;
+        uniform mat4 uMVP;
+        void main() {
+            gl_Position = uMVP * vec4(aPosition, 1.0);
+        }
+    `;
+
+    const lineFragmentShader = `
+        precision mediump float;
+        uniform vec3 uColor;
+        void main() {
+            gl_FragColor = vec4(uColor, 0.8);
+        }
+    `;
+
+    // Textured quad shader for camera images
+    const textureVertexShader = `
+        attribute vec3 aPosition;
+        attribute vec2 aTexCoord;
+        uniform mat4 uMVP;
+        varying vec2 vTexCoord;
+        void main() {
+            vTexCoord = aTexCoord;
+            gl_Position = uMVP * vec4(aPosition, 1.0);
+        }
+    `;
+
+    const textureFragmentShader = `
+        precision mediump float;
+        uniform sampler2D uTexture;
+        uniform float uOpacity;
+        varying vec2 vTexCoord;
+        void main() {
+            vec4 color = texture2D(uTexture, vTexCoord);
+            gl_FragColor = vec4(color.rgb, color.a * uOpacity);
+        }
+    `;
+
+    // Compile shader
+    function compileShader(source, type) {
+        const shader = gl.createShader(type);
+        gl.shaderSource(shader, source);
+        gl.compileShader(shader);
+        if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+            console.error('Shader compile error:', gl.getShaderInfoLog(shader));
+            return null;
+        }
+        return shader;
+    }
+
+    // Create program
+    function createProgram(vsSource, fsSource) {
+        const vs = compileShader(vsSource, gl.VERTEX_SHADER);
+        const fs = compileShader(fsSource, gl.FRAGMENT_SHADER);
+        const program = gl.createProgram();
+        gl.attachShader(program, vs);
+        gl.attachShader(program, fs);
+        gl.linkProgram(program);
+        if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+            console.error('Program link error:', gl.getProgramInfoLog(program));
+            return null;
+        }
+        return program;
+    }
+
+    // Matrix math
+    const mat4 = {
+        create: () => new Float32Array([1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1]),
+        perspective: (fovy, aspect, near, far) => {
+            const f = 1.0 / Math.tan(fovy / 2);
+            const nf = 1 / (near - far);
+            return new Float32Array([
+                f/aspect, 0, 0, 0,
+                0, f, 0, 0,
+                0, 0, (far+near)*nf, -1,
+                0, 0, 2*far*near*nf, 0
+            ]);
+        },
+        lookAt: (eye, center, up) => {
+            const z = normalize(sub(eye, center));
+            const x = normalize(cross(up, z));
+            const y = cross(z, x);
+            return new Float32Array([
+                x[0], y[0], z[0], 0,
+                x[1], y[1], z[1], 0,
+                x[2], y[2], z[2], 0,
+                -dot(x, eye), -dot(y, eye), -dot(z, eye), 1
+            ]);
+        },
+        multiply: (a, b) => {
+            const out = new Float32Array(16);
+            for (let i = 0; i < 4; i++) {
+                for (let j = 0; j < 4; j++) {
+                    out[i*4+j] = a[j]*b[i*4] + a[4+j]*b[i*4+1] + a[8+j]*b[i*4+2] + a[12+j]*b[i*4+3];
+                }
+            }
+            return out;
+        },
+        translate: (m, v) => {
+            const out = new Float32Array(m);
+            out[12] = m[0]*v[0] + m[4]*v[1] + m[8]*v[2] + m[12];
+            out[13] = m[1]*v[0] + m[5]*v[1] + m[9]*v[2] + m[13];
+            out[14] = m[2]*v[0] + m[6]*v[1] + m[10]*v[2] + m[14];
+            return out;
+        }
+    };
+
+    function sub(a, b) { return [a[0]-b[0], a[1]-b[1], a[2]-b[2]]; }
+    function dot(a, b) { return a[0]*b[0] + a[1]*b[1] + a[2]*b[2]; }
+    function cross(a, b) { return [a[1]*b[2]-a[2]*b[1], a[2]*b[0]-a[0]*b[2], a[0]*b[1]-a[1]*b[0]]; }
+    function normalize(v) { const l = Math.sqrt(dot(v, v)); return l > 0 ? [v[0]/l, v[1]/l, v[2]/l] : [0,0,0]; }
+    function length(v) { return Math.sqrt(dot(v, v)); }
+
+    // State
+    let pointProgram, lineProgram, textureProgram;
+    let pointBuffer, colorBuffer, cameraBuffer;
+    let pointCount = 0, cameraVertexCount = 0;
+    let center = [0, 0, 0];
+    let distance = 5;
+    let rotationX = 0.3, rotationY = 0;
+    let pointSize = 3;
+    let showCameras = true;
+    let autoRotate = false;  // Default: off
+    let freeRotation = true; // Default: on
+    let cameraSize = 1.0;    // Camera size multiplier
+    
+    // For trackball rotation (free rotation mode)
+    let rotationMatrix = mat4.create();
+    
+    // Camera position for WASD navigation
+    let cameraPos = [0, 0, 0];
+    let moveSpeed = 0.15;  // Default slower speed
+
+    // Mouse state
+    let isDragging = false;
+    let lastMouse = [0, 0];
+    
+    // Keyboard state
+    const keys = { w: false, a: false, s: false, d: false };
+    
+    // Camera image data
+    let cameraImages = [];  // Array of {texture, position, direction, right, up, vertices, texCoords}
+    let baseSceneScale = 1; // Will be set based on point cloud size
+    let cameraIntrinsics = {}; // Camera intrinsics from COLMAP
+    let selectedCamera = null; // Currently selected camera for details view
+    
+    // Camera model names
+    const CAMERA_MODELS = {
+        0: 'SIMPLE_PINHOLE', 1: 'PINHOLE', 2: 'SIMPLE_RADIAL', 3: 'RADIAL',
+        4: 'OPENCV', 5: 'OPENCV_FISHEYE', 6: 'FULL_OPENCV', 7: 'FOV',
+        8: 'SIMPLE_RADIAL_FISHEYE', 9: 'RADIAL_FISHEYE', 10: 'THIN_PRISM_FISHEYE'
+    };
+
+    // Initialize
+    function init() {
+        pointProgram = createProgram(pointVertexShader, pointFragmentShader);
+        lineProgram = createProgram(lineVertexShader, lineFragmentShader);
+        textureProgram = createProgram(textureVertexShader, textureFragmentShader);
+        
+        pointBuffer = gl.createBuffer();
+        colorBuffer = gl.createBuffer();
+        cameraBuffer = gl.createBuffer();
+        
+        gl.enable(gl.DEPTH_TEST);
+        gl.enable(gl.BLEND);
+        gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+        gl.clearColor(0.1, 0.1, 0.18, 1.0);
+        
+        resize();
+        window.addEventListener('resize', resize);
+        
+        // Mouse controls
+        canvas.addEventListener('mousedown', onMouseDown);
+        canvas.addEventListener('mousemove', onMouseMove);
+        canvas.addEventListener('mouseup', onMouseUp);
+        canvas.addEventListener('mouseleave', onMouseUp);
+        canvas.addEventListener('wheel', onWheel);
+        
+        // Touch controls
+        canvas.addEventListener('touchstart', onTouchStart);
+        canvas.addEventListener('touchmove', onTouchMove);
+        canvas.addEventListener('touchend', onTouchEnd);
+        
+        // UI controls
+        document.getElementById('point-size').addEventListener('input', (e) => {
+            pointSize = parseFloat(e.target.value);
+        });
+        document.getElementById('show-cameras').addEventListener('change', (e) => {
+            showCameras = e.target.checked;
+        });
+        document.getElementById('camera-size').addEventListener('input', (e) => {
+            cameraSize = parseFloat(e.target.value);
+        });
+        document.getElementById('auto-rotate').addEventListener('change', (e) => {
+            autoRotate = e.target.checked;
+        });
+        document.getElementById('free-rotation').addEventListener('change', (e) => {
+            freeRotation = e.target.checked;
+            if (!freeRotation) {
+                // Reset to default orientation when switching back
+                rotationMatrix = mat4.create();
+                rotationX = 0.3;
+                rotationY = 0;
+            }
+        });
+        document.getElementById('move-speed').addEventListener('input', (e) => {
+            moveSpeed = parseFloat(e.target.value);
+        });
+        
+        // Keyboard controls for WASD navigation
+        window.addEventListener('keydown', (e) => {
+            const key = e.key.toLowerCase();
+            if (key in keys) {
+                keys[key] = true;
+                e.preventDefault();
+            }
+        });
+        window.addEventListener('keyup', (e) => {
+            const key = e.key.toLowerCase();
+            if (key in keys) {
+                keys[key] = false;
+                e.preventDefault();
+            }
+        });
+        
+        loadData();
+    }
+
+    function resize() {
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+        gl.viewport(0, 0, canvas.width, canvas.height);
+    }
+
+    async function loadData() {
+        try {
+            const response = await fetch('data/fern/reconstruction.json');
+            const data = await response.json();
+            
+            // Store camera intrinsics
+            cameraIntrinsics = data.camera_intrinsics || {};
+            
+            setupPointCloud(data.points);
+            await setupCameras(data.cameras);
+            
+            // Update stats in left info panel
+            document.getElementById('point-count').textContent = data.points.length.toLocaleString();
+            document.getElementById('camera-count').textContent = data.cameras.length;
+            
+            // Update dataset details pane
+            document.getElementById('detail-points').textContent = data.points.length.toLocaleString();
+            document.getElementById('detail-cameras').textContent = data.cameras.length;
+            
+            // Populate camera model info from first intrinsic
+            const intrinsicKeys = Object.keys(cameraIntrinsics);
+            if (intrinsicKeys.length > 0) {
+                const cam = cameraIntrinsics[intrinsicKeys[0]];
+                document.getElementById('detail-cam-model').textContent = CAMERA_MODELS[cam.model_id] || `Model ${cam.model_id}`;
+                document.getElementById('detail-resolution').textContent = `${cam.width} × ${cam.height}`;
+                if (cam.params && cam.params.length >= 2) {
+                    document.getElementById('detail-focal').textContent = `${cam.params[0].toFixed(2)} px`;
+                    if (cam.params.length >= 4) {
+                        document.getElementById('detail-principal').textContent = `(${cam.params[2].toFixed(1)}, ${cam.params[3].toFixed(1)})`;
+                    } else if (cam.params.length >= 3) {
+                        document.getElementById('detail-principal').textContent = `(${cam.params[1].toFixed(1)}, ${cam.params[2].toFixed(1)})`;
+                    }
+                }
+            }
+            
+            document.getElementById('loading').style.display = 'none';
+            
+            // Setup camera click handler
+            setupCameraClickHandler();
+            
+            // Setup close button handler
+            document.getElementById('close-camera-details').addEventListener('click', () => {
+                selectedCamera = null;
+                document.getElementById('dataset-details').style.display = 'block';
+                document.getElementById('camera-details').style.display = 'none';
+            });
+            
+            render();
+        } catch (error) {
+            console.error('Failed to load data:', error);
+            document.getElementById('loading').innerHTML = '<p style="color:#f44">Error loading point cloud</p>';
+        }
+    }
+    
+    function setupCameraClickHandler() {
+        canvas.addEventListener('click', (e) => {
+            if (hasDragged) return; // Don't select if we were dragging
+            
+            const rect = canvas.getBoundingClientRect();
+            const mouseX = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+            const mouseY = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+            
+            // Ray casting to find clicked camera
+            const clickedCam = findClickedCamera(mouseX, mouseY);
+            if (clickedCam) {
+                showCameraDetails(clickedCam);
+            }
+        });
+    }
+    
+    function findClickedCamera(mouseX, mouseY) {
+        const aspect = canvas.width / canvas.height;
+        const projection = mat4.perspective(Math.PI / 3, aspect, 0.01, 1000);
+        
+        const effectiveCenter = [
+            center[0] + cameraPos[0],
+            center[1] + cameraPos[1],
+            center[2] + cameraPos[2]
+        ];
+        
+        let view;
+        if (freeRotation) {
+            const eye = [0, 0, distance];
+            const lookAtMat = mat4.lookAt(eye, [0, 0, 0], [0, 1, 0]);
+            view = mat4.multiply(lookAtMat, rotationMatrix);
+            view = mat4.translate(view, [-effectiveCenter[0], -effectiveCenter[1], -effectiveCenter[2]]);
+        } else {
+            const eyeX = effectiveCenter[0] + distance * Math.cos(rotationX) * Math.sin(rotationY);
+            const eyeY = effectiveCenter[1] + distance * Math.sin(rotationX);
+            const eyeZ = effectiveCenter[2] + distance * Math.cos(rotationX) * Math.cos(rotationY);
+            view = mat4.lookAt([eyeX, eyeY, eyeZ], effectiveCenter, [0, 1, 0]);
+        }
+        
+        const mvp = mat4.multiply(projection, view);
+        
+        let closestCam = null;
+        let closestDepth = Infinity;
+        
+        for (const cam of cameraImages) {
+            // Check if cam has corners (image quad)
+            if (!cam.corners || cam.corners.length < 4) continue;
+            
+            // Project all 4 corners of the image quad to screen space
+            const screenCorners = cam.corners.map(corner => transformPoint(mvp, corner));
+            
+            // Check if any corner is behind camera
+            const allVisible = screenCorners.every(c => c[2] > 0 && c[2] < 1);
+            if (!allVisible) continue;
+            
+            // Check if mouse point is inside the projected quad using point-in-polygon test
+            if (pointInQuad(mouseX, mouseY, screenCorners)) {
+                // Use average depth to determine which camera is closest
+                const avgDepth = screenCorners.reduce((sum, c) => sum + c[2], 0) / 4;
+                if (avgDepth < closestDepth) {
+                    closestDepth = avgDepth;
+                    closestCam = cam;
+                }
+            }
+        }
+        
+        // Fallback: also check distance to camera position for frustum tip clicks
+        if (!closestCam) {
+            let closestDist = 0.08;
+            for (const cam of cameraImages) {
+                const clipPos = transformPoint(mvp, cam.position);
+                if (clipPos[2] < 0 || clipPos[2] > 1) continue;
+                
+                const screenDist = Math.sqrt(
+                    Math.pow(clipPos[0] - mouseX, 2) + 
+                    Math.pow(clipPos[1] - mouseY, 2)
+                );
+                
+                if (screenDist < closestDist) {
+                    closestDist = screenDist;
+                    closestCam = cam;
+                }
+            }
+        }
+        
+        return closestCam;
+    }
+    
+    // Point-in-quad test using cross product method
+    function pointInQuad(px, py, corners) {
+        // Check if point is on the same side of all edges
+        const signs = [];
+        for (let i = 0; i < 4; i++) {
+            const c1 = corners[i];
+            const c2 = corners[(i + 1) % 4];
+            // Cross product of edge vector and point vector
+            const cross = (c2[0] - c1[0]) * (py - c1[1]) - (c2[1] - c1[1]) * (px - c1[0]);
+            signs.push(cross > 0);
+        }
+        // Point is inside if all cross products have the same sign
+        return signs.every(s => s === signs[0]);
+    }
+    
+    function transformPoint(mvp, point) {
+        const x = mvp[0]*point[0] + mvp[4]*point[1] + mvp[8]*point[2] + mvp[12];
+        const y = mvp[1]*point[0] + mvp[5]*point[1] + mvp[9]*point[2] + mvp[13];
+        const z = mvp[2]*point[0] + mvp[6]*point[1] + mvp[10]*point[2] + mvp[14];
+        const w = mvp[3]*point[0] + mvp[7]*point[1] + mvp[11]*point[2] + mvp[15];
+        return [x/w, y/w, (z/w + 1) / 2]; // Normalized device coords + depth
+    }
+    
+    function showCameraDetails(cam) {
+        selectedCamera = cam;
+        
+        // Update thumbnail
+        const imgPath = `data/fern/images_8/${cam.imageName}`;
+        document.getElementById('camera-thumb').src = imgPath;
+        
+        // Update camera info
+        document.getElementById('cam-id').textContent = cam.name;
+        document.getElementById('cam-image-name').textContent = cam.imageName;
+        
+        // Position
+        const pos = cam.position;
+        document.getElementById('cam-position').textContent = 
+            `(${pos[0].toFixed(3)}, ${pos[1].toFixed(3)}, ${pos[2].toFixed(3)})`;
+        
+        // Quaternion (from original data, we'll need to store it)
+        if (cam.qvec) {
+            document.getElementById('cam-quaternion').textContent = 
+                `(${cam.qvec[0].toFixed(4)}, ${cam.qvec[1].toFixed(4)}, ${cam.qvec[2].toFixed(4)}, ${cam.qvec[3].toFixed(4)})`;
+        } else {
+            document.getElementById('cam-quaternion').textContent = '-';
+        }
+        
+        // Intrinsics
+        const intrinsicKeys = Object.keys(cameraIntrinsics);
+        if (intrinsicKeys.length > 0) {
+            const intr = cameraIntrinsics[intrinsicKeys[0]];
+            document.getElementById('cam-resolution').textContent = `${intr.width} × ${intr.height}`;
+            if (intr.params && intr.params.length >= 1) {
+                document.getElementById('cam-focal').textContent = `${intr.params[0].toFixed(2)} px`;
+                if (intr.params.length >= 4) {
+                    document.getElementById('cam-principal').textContent = `(${intr.params[2].toFixed(1)}, ${intr.params[3].toFixed(1)})`;
+                } else if (intr.params.length >= 3) {
+                    document.getElementById('cam-principal').textContent = `(${intr.params[1].toFixed(1)}, ${intr.params[2].toFixed(1)})`;
+                }
+            }
+        }
+        
+        // Show camera details, hide dataset details
+        document.getElementById('dataset-details').style.display = 'none';
+        document.getElementById('camera-details').style.display = 'block';
+    }
+
+    function setupPointCloud(points) {
+        const positions = new Float32Array(points.length * 3);
+        const colors = new Float32Array(points.length * 3);
+        
+        let minX = Infinity, minY = Infinity, minZ = Infinity;
+        let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
+        
+        for (let i = 0; i < points.length; i++) {
+            const p = points[i];
+            positions[i*3] = p.x;
+            positions[i*3+1] = p.y;
+            positions[i*3+2] = p.z;
+            colors[i*3] = p.r / 255;
+            colors[i*3+1] = p.g / 255;
+            colors[i*3+2] = p.b / 255;
+            
+            minX = Math.min(minX, p.x); maxX = Math.max(maxX, p.x);
+            minY = Math.min(minY, p.y); maxY = Math.max(maxY, p.y);
+            minZ = Math.min(minZ, p.z); maxZ = Math.max(maxZ, p.z);
+        }
+        
+        center = [(minX+maxX)/2, (minY+maxY)/2, (minZ+maxZ)/2];
+        distance = Math.max(maxX-minX, maxY-minY, maxZ-minZ) * 1.5;
+        baseSceneScale = distance * 0.02;  // Base scale for camera frustums
+        
+        gl.bindBuffer(gl.ARRAY_BUFFER, pointBuffer);
+        gl.bufferData(gl.ARRAY_BUFFER, positions, gl.STATIC_DRAW);
+        
+        gl.bindBuffer(gl.ARRAY_BUFFER, colorBuffer);
+        gl.bufferData(gl.ARRAY_BUFFER, colors, gl.STATIC_DRAW);
+        
+        pointCount = points.length;
+    }
+
+    // Load a texture from an image URL
+    function loadTexture(url) {
+        return new Promise((resolve, reject) => {
+            const texture = gl.createTexture();
+            const image = new Image();
+            image.onload = () => {
+                gl.bindTexture(gl.TEXTURE_2D, texture);
+                gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, image);
+                gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+                gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+                gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+                gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+                resolve(texture);
+            };
+            image.onerror = () => resolve(null);  // Don't fail, just skip
+            image.src = url;
+        });
+    }
+
+    async function setupCameras(cameras) {
+        // Store camera data for dynamic rendering
+        cameraImages = [];
+        
+        // The images in images_8 folder are named image000.png, image001.png, etc.
+        // Sort cameras by name to match them with image indices
+        const sortedCameras = [...cameras].sort((a, b) => a.name.localeCompare(b.name));
+        
+        // Create mapping from original camera name to image index
+        const nameToIndex = {};
+        sortedCameras.forEach((cam, idx) => {
+            nameToIndex[cam.name] = idx;
+        });
+        
+        for (const cam of cameras) {
+            const pos = cam.position;
+            const dir = cam.view_direction;
+            const right = normalize(cross(dir, [0, 1, 0]));
+            const up = normalize(cross(right, dir));
+            
+            // Map camera name to image index
+            const imageIndex = nameToIndex[cam.name];
+            const imageName = `image${String(imageIndex).padStart(3, '0')}.png`;
+            const imagePath = `data/fern/images_8/${imageName}`;
+            
+            // Load texture
+            const texture = await loadTexture(imagePath);
+            
+            cameraImages.push({
+                position: pos,
+                direction: dir,
+                right: right,
+                up: up,
+                name: cam.name,
+                imageName: imageName,
+                texture: texture,
+                qvec: cam.qvec,  // Store quaternion for details display
+                camera_id: cam.camera_id,
+                // Create buffers for this camera's quad
+                vertexBuffer: gl.createBuffer(),
+                texCoordBuffer: gl.createBuffer()
+            });
+        }
+        
+        // Update the camera line buffer initially (will be updated each frame for size changes)
+        updateCameraBuffers();
+    }
+    
+    function updateCameraBuffers() {
+        const vertices = [];
+        const scale = baseSceneScale * cameraSize;
+        
+        cameraImages.forEach(cam => {
+            const pos = cam.position;
+            const dir = cam.direction;
+            const right = cam.right;
+            const up = cam.up;
+            
+            const tipDist = scale * 2;
+            const halfW = scale * 0.75;
+            const halfH = scale * 0.5;
+            
+            const tip = pos;
+            const corners = [
+                [pos[0] + dir[0]*tipDist - right[0]*halfW - up[0]*halfH,
+                 pos[1] + dir[1]*tipDist - right[1]*halfW - up[1]*halfH,
+                 pos[2] + dir[2]*tipDist - right[2]*halfW - up[2]*halfH],
+                [pos[0] + dir[0]*tipDist + right[0]*halfW - up[0]*halfH,
+                 pos[1] + dir[1]*tipDist + right[1]*halfW - up[1]*halfH,
+                 pos[2] + dir[2]*tipDist + right[2]*halfW - up[2]*halfH],
+                [pos[0] + dir[0]*tipDist + right[0]*halfW + up[0]*halfH,
+                 pos[1] + dir[1]*tipDist + right[1]*halfW + up[1]*halfH,
+                 pos[2] + dir[2]*tipDist + right[2]*halfW + up[2]*halfH],
+                [pos[0] + dir[0]*tipDist - right[0]*halfW + up[0]*halfH,
+                 pos[1] + dir[1]*tipDist - right[1]*halfW + up[1]*halfH,
+                 pos[2] + dir[2]*tipDist - right[2]*halfW + up[2]*halfH]
+            ];
+            
+            // Store corners for image quad rendering
+            cam.corners = corners;
+            
+            // Update quad vertex buffer (two triangles)
+            const quadVertices = new Float32Array([
+                ...corners[0], ...corners[1], ...corners[2],
+                ...corners[0], ...corners[2], ...corners[3]
+            ]);
+            gl.bindBuffer(gl.ARRAY_BUFFER, cam.vertexBuffer);
+            gl.bufferData(gl.ARRAY_BUFFER, quadVertices, gl.DYNAMIC_DRAW);
+            
+            // Texture coordinates - corners are: [0]=bottom-left, [1]=bottom-right, [2]=top-right, [3]=top-left
+            // Map them to texture coords: (0,0)=top-left, (1,0)=top-right, (0,1)=bottom-left, (1,1)=bottom-right
+            const texCoords = new Float32Array([
+                0, 0,  1, 0,  1, 1,  // Triangle 1: corners 0,1,2
+                0, 0,  1, 1,  0, 1   // Triangle 2: corners 0,2,3
+            ]);
+            gl.bindBuffer(gl.ARRAY_BUFFER, cam.texCoordBuffer);
+            gl.bufferData(gl.ARRAY_BUFFER, texCoords, gl.STATIC_DRAW);
+            
+            // Lines from tip to corners
+            for (let c of corners) {
+                vertices.push(...tip, ...c);
+            }
+            // Rectangle
+            for (let i = 0; i < 4; i++) {
+                vertices.push(...corners[i], ...corners[(i+1)%4]);
+            }
+        });
+        
+        gl.bindBuffer(gl.ARRAY_BUFFER, cameraBuffer);
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(vertices), gl.DYNAMIC_DRAW);
+        cameraVertexCount = vertices.length / 3;
+    }
+
+    // Trackball rotation helper
+    function applyTrackballRotation(dx, dy) {
+        const sensitivity = 0.01;
+        
+        // Create rotation around X and Y axes
+        const angleX = dy * sensitivity;
+        const angleY = dx * sensitivity;
+        
+        const cosX = Math.cos(angleX), sinX = Math.sin(angleX);
+        const cosY = Math.cos(angleY), sinY = Math.sin(angleY);
+        
+        // Rotation around X axis
+        const rotX = new Float32Array([
+            1, 0, 0, 0,
+            0, cosX, sinX, 0,
+            0, -sinX, cosX, 0,
+            0, 0, 0, 1
+        ]);
+        
+        // Rotation around Y axis
+        const rotY = new Float32Array([
+            cosY, 0, -sinY, 0,
+            0, 1, 0, 0,
+            sinY, 0, cosY, 0,
+            0, 0, 0, 1
+        ]);
+        
+        // Apply rotations: new = rotY * rotX * current
+        rotationMatrix = mat4.multiply(mat4.multiply(rotY, rotX), rotationMatrix);
+    }
+
+    let hasDragged = false;  // Track if we actually moved (not just clicked)
+    
+    function onMouseDown(e) {
+        isDragging = true;
+        hasDragged = false;
+        lastMouse = [e.clientX, e.clientY];
+    }
+
+    function onMouseMove(e) {
+        if (!isDragging) return;
+        const dx = e.clientX - lastMouse[0];
+        const dy = e.clientY - lastMouse[1];
+        
+        // Mark as dragged if moved more than a few pixels
+        if (Math.abs(dx) > 3 || Math.abs(dy) > 3) {
+            hasDragged = true;
+        }
+        
+        if (freeRotation) {
+            applyTrackballRotation(dx, dy);
+        } else {
+            rotationY += dx * 0.01;
+            rotationX += dy * 0.01;
+            rotationX = Math.max(-Math.PI/2 + 0.1, Math.min(Math.PI/2 - 0.1, rotationX));
+        }
+        
+        lastMouse = [e.clientX, e.clientY];
+    }
+
+    function onMouseUp() {
+        isDragging = false;
+    }
+
+    function onWheel(e) {
+        e.preventDefault();
+        // Zoom speed scales with movement speed setting
+        const zoomFactor = 1 + (0.1 * moveSpeed);
+        distance *= e.deltaY > 0 ? zoomFactor : (1 / zoomFactor);
+        distance = Math.max(0.1, Math.min(1000, distance));
+    }
+
+    function onTouchStart(e) {
+        if (e.touches.length === 1) {
+            isDragging = true;
+            lastMouse = [e.touches[0].clientX, e.touches[0].clientY];
+        }
+    }
+
+    function onTouchMove(e) {
+        e.preventDefault();
+        if (e.touches.length === 1 && isDragging) {
+            const dx = e.touches[0].clientX - lastMouse[0];
+            const dy = e.touches[0].clientY - lastMouse[1];
+            
+            if (freeRotation) {
+                applyTrackballRotation(dx, dy);
+            } else {
+                rotationY += dx * 0.01;
+                rotationX += dy * 0.01;
+                rotationX = Math.max(-Math.PI/2 + 0.1, Math.min(Math.PI/2 - 0.1, rotationX));
+            }
+            
+            lastMouse = [e.touches[0].clientX, e.touches[0].clientY];
+        }
+    }
+
+    function onTouchEnd() {
+        isDragging = false;
+    }
+
+    // Get camera direction vectors from rotation matrix
+    function getCameraDirections() {
+        if (freeRotation) {
+            // Extract forward and right from rotation matrix
+            // rotationMatrix is the rotation applied to the scene, so camera directions are inverse
+            const forward = normalize([
+                -rotationMatrix[2],
+                -rotationMatrix[6],
+                -rotationMatrix[10]
+            ]);
+            const right = normalize([
+                rotationMatrix[0],
+                rotationMatrix[4],
+                rotationMatrix[8]
+            ]);
+            return { forward, right };
+        } else {
+            // For orbit mode, forward is toward center, right is perpendicular
+            const forward = [
+                -Math.sin(rotationY),
+                0,
+                -Math.cos(rotationY)
+            ];
+            const right = [
+                Math.cos(rotationY),
+                0,
+                -Math.sin(rotationY)
+            ];
+            return { forward, right };
+        }
+    }
+
+    function render() {
+        // Auto rotation
+        if (autoRotate && !isDragging) {
+            if (freeRotation) {
+                applyTrackballRotation(0.5, 0);
+            } else {
+                rotationY += 0.003;
+            }
+        }
+        
+        // WASD movement
+        const { forward, right } = getCameraDirections();
+        const currentMoveSpeed = moveSpeed * (distance / 10); // Scale speed with distance
+        
+        if (keys.w) {
+            cameraPos[0] += forward[0] * currentMoveSpeed;
+            cameraPos[1] += forward[1] * currentMoveSpeed;
+            cameraPos[2] += forward[2] * currentMoveSpeed;
+        }
+        if (keys.s) {
+            cameraPos[0] -= forward[0] * currentMoveSpeed;
+            cameraPos[1] -= forward[1] * currentMoveSpeed;
+            cameraPos[2] -= forward[2] * currentMoveSpeed;
+        }
+        if (keys.a) {
+            cameraPos[0] -= right[0] * currentMoveSpeed;
+            cameraPos[1] -= right[1] * currentMoveSpeed;
+            cameraPos[2] -= right[2] * currentMoveSpeed;
+        }
+        if (keys.d) {
+            cameraPos[0] += right[0] * currentMoveSpeed;
+            cameraPos[1] += right[1] * currentMoveSpeed;
+            cameraPos[2] += right[2] * currentMoveSpeed;
+        }
+        
+        gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+        
+        const aspect = canvas.width / canvas.height;
+        const projection = mat4.perspective(Math.PI / 3, aspect, 0.01, 1000);
+        
+        // Calculate effective center (original center + camera offset)
+        const effectiveCenter = [
+            center[0] + cameraPos[0],
+            center[1] + cameraPos[1],
+            center[2] + cameraPos[2]
+        ];
+        
+        let view;
+        if (freeRotation) {
+            // Use trackball rotation matrix
+            const eye = [0, 0, distance];
+            const lookAtMat = mat4.lookAt(eye, [0, 0, 0], [0, 1, 0]);
+            view = mat4.multiply(lookAtMat, rotationMatrix);
+            view = mat4.translate(view, [-effectiveCenter[0], -effectiveCenter[1], -effectiveCenter[2]]);
+        } else {
+            // Standard orbit controls with axis lock
+            const eyeX = effectiveCenter[0] + distance * Math.cos(rotationX) * Math.sin(rotationY);
+            const eyeY = effectiveCenter[1] + distance * Math.sin(rotationX);
+            const eyeZ = effectiveCenter[2] + distance * Math.cos(rotationX) * Math.cos(rotationY);
+            view = mat4.lookAt([eyeX, eyeY, eyeZ], effectiveCenter, [0, 1, 0]);
+        }
+        
+        const mvp = mat4.multiply(projection, view);
+        
+        // Draw points
+        gl.useProgram(pointProgram);
+        
+        const posLoc = gl.getAttribLocation(pointProgram, 'aPosition');
+        const colorLoc = gl.getAttribLocation(pointProgram, 'aColor');
+        const mvpLoc = gl.getUniformLocation(pointProgram, 'uMVP');
+        const sizeLoc = gl.getUniformLocation(pointProgram, 'uPointSize');
+        
+        gl.uniformMatrix4fv(mvpLoc, false, mvp);
+        gl.uniform1f(sizeLoc, pointSize);
+        
+        gl.bindBuffer(gl.ARRAY_BUFFER, pointBuffer);
+        gl.enableVertexAttribArray(posLoc);
+        gl.vertexAttribPointer(posLoc, 3, gl.FLOAT, false, 0, 0);
+        
+        gl.bindBuffer(gl.ARRAY_BUFFER, colorBuffer);
+        gl.enableVertexAttribArray(colorLoc);
+        gl.vertexAttribPointer(colorLoc, 3, gl.FLOAT, false, 0, 0);
+        
+        gl.drawArrays(gl.POINTS, 0, pointCount);
+        
+        // Draw cameras
+        if (showCameras && cameraImages.length > 0) {
+            // Update camera buffers (in case size changed)
+            updateCameraBuffers();
+            
+            // Draw camera frustum lines
+            gl.useProgram(lineProgram);
+            
+            const linePosLoc = gl.getAttribLocation(lineProgram, 'aPosition');
+            const lineMvpLoc = gl.getUniformLocation(lineProgram, 'uMVP');
+            const lineColorLoc = gl.getUniformLocation(lineProgram, 'uColor');
+            
+            gl.uniformMatrix4fv(lineMvpLoc, false, mvp);
+            gl.uniform3f(lineColorLoc, 0.31, 0.76, 0.97);
+            
+            gl.bindBuffer(gl.ARRAY_BUFFER, cameraBuffer);
+            gl.enableVertexAttribArray(linePosLoc);
+            gl.vertexAttribPointer(linePosLoc, 3, gl.FLOAT, false, 0, 0);
+            
+            gl.drawArrays(gl.LINES, 0, cameraVertexCount);
+            gl.disableVertexAttribArray(linePosLoc);
+            
+            // Draw camera images
+            gl.useProgram(textureProgram);
+            
+            const texPosLoc = gl.getAttribLocation(textureProgram, 'aPosition');
+            const texCoordLoc = gl.getAttribLocation(textureProgram, 'aTexCoord');
+            const texMvpLoc = gl.getUniformLocation(textureProgram, 'uMVP');
+            const texSamplerLoc = gl.getUniformLocation(textureProgram, 'uTexture');
+            const texOpacityLoc = gl.getUniformLocation(textureProgram, 'uOpacity');
+            
+            gl.uniformMatrix4fv(texMvpLoc, false, mvp);
+            gl.uniform1f(texOpacityLoc, 0.9);
+            gl.uniform1i(texSamplerLoc, 0);
+            
+            gl.activeTexture(gl.TEXTURE0);
+            
+            for (const cam of cameraImages) {
+                if (!cam.texture) continue;
+                
+                gl.bindTexture(gl.TEXTURE_2D, cam.texture);
+                
+                gl.bindBuffer(gl.ARRAY_BUFFER, cam.vertexBuffer);
+                gl.enableVertexAttribArray(texPosLoc);
+                gl.vertexAttribPointer(texPosLoc, 3, gl.FLOAT, false, 0, 0);
+                
+                gl.bindBuffer(gl.ARRAY_BUFFER, cam.texCoordBuffer);
+                gl.enableVertexAttribArray(texCoordLoc);
+                gl.vertexAttribPointer(texCoordLoc, 2, gl.FLOAT, false, 0, 0);
+                
+                gl.drawArrays(gl.TRIANGLES, 0, 6);
+            }
+            
+            gl.disableVertexAttribArray(texPosLoc);
+            gl.disableVertexAttribArray(texCoordLoc);
+        }
+        
+        requestAnimationFrame(render);
+    }
+
+    init();
+    </script>
+</body>
+</html>
