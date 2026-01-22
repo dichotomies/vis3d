@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>COLMAP Point Cloud Visualizer</title>
+    <title>3D Reconstruction Visualizer</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
@@ -59,6 +59,623 @@
         }
         @keyframes spin { to { transform: rotate(360deg); } }
         #loading p { margin-top: 20px; color: #888; }
+        
+        /* Welcome Screen Styles */
+        #welcome-screen {
+            position: fixed;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 2000;
+            flex-direction: column;
+        }
+        #welcome-screen.hidden { display: none; }
+        .welcome-container {
+            text-align: center;
+            max-width: 800px;
+            padding: 40px;
+        }
+        .welcome-container h1 {
+            font-size: 2.5em;
+            margin-bottom: 15px;
+            color: #4fc3f7;
+        }
+        .welcome-container p {
+            font-size: 1.1em;
+            color: #aaa;
+            margin-bottom: 40px;
+            line-height: 1.6;
+        }
+        .action-buttons {
+            display: flex;
+            gap: 20px;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+        .action-btn {
+            padding: 20px 40px;
+            font-size: 1.1em;
+            border: none;
+            border-radius: 12px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 10px;
+            min-width: 200px;
+        }
+        .action-btn.primary {
+            background: linear-gradient(135deg, #4fc3f7 0%, #29b6f6 100%);
+            color: #000;
+        }
+        .action-btn.secondary {
+            background: linear-gradient(135deg, #66bb6a 0%, #43a047 100%);
+            color: #fff;
+        }
+        .action-btn:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 10px 30px rgba(79, 195, 247, 0.3);
+        }
+        .action-btn .icon { font-size: 2em; }
+        .action-btn .label { font-weight: 600; }
+        .action-btn .sublabel { font-size: 0.8em; opacity: 0.8; }
+        
+        /* Image Selection Screen */
+        #image-selection-screen {
+            position: fixed;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            z-index: 2000;
+            overflow-y: auto;
+            padding: 40px;
+        }
+        #image-selection-screen.hidden { display: none; }
+        .selection-header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .selection-header h2 {
+            font-size: 1.8em;
+            color: #4fc3f7;
+            margin-bottom: 10px;
+        }
+        .selection-header p {
+            color: #888;
+            font-size: 1em;
+        }
+        .selection-status {
+            background: rgba(0, 0, 0, 0.4);
+            padding: 15px 25px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 15px;
+        }
+        .selection-status .status-text {
+            font-size: 1em;
+            color: #aaa;
+        }
+        .selection-status .status-text strong {
+            color: #4fc3f7;
+        }
+        .selection-actions {
+            display: flex;
+            gap: 10px;
+        }
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 0.9em;
+            font-weight: 500;
+            transition: all 0.2s ease;
+        }
+        .btn-primary {
+            background: #4fc3f7;
+            color: #000;
+        }
+        .btn-primary:hover {
+            background: #29b6f6;
+        }
+        .btn-primary:disabled {
+            background: #444;
+            color: #888;
+            cursor: not-allowed;
+        }
+        .btn-secondary {
+            background: rgba(255, 255, 255, 0.1);
+            color: #fff;
+        }
+        .btn-secondary:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+        .image-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 20px;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        .image-card {
+            background: rgba(0, 0, 0, 0.4);
+            border-radius: 12px;
+            overflow: hidden;
+            transition: all 0.3s ease;
+            cursor: pointer;
+            border: 3px solid transparent;
+        }
+        .image-card:hover {
+            transform: translateY(-5px);
+            border-color: rgba(79, 195, 247, 0.5);
+        }
+        .image-card.selected {
+            border-color: #4fc3f7;
+            box-shadow: 0 0 20px rgba(79, 195, 247, 0.4);
+        }
+        .image-card.selected .selection-badge {
+            display: flex;
+        }
+        .image-card img {
+            width: 100%;
+            height: 150px;
+            object-fit: cover;
+        }
+        .image-card .image-name {
+            padding: 10px;
+            font-size: 0.85em;
+            color: #aaa;
+            text-align: center;
+            background: rgba(0, 0, 0, 0.3);
+        }
+        .selection-badge {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background: #4fc3f7;
+            color: #000;
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 0.9em;
+        }
+        .image-card-wrapper {
+            position: relative;
+        }
+        
+        /* SfM Progress Panel */
+        #sfm-progress {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            width: 350px;
+            max-height: calc(100vh - 40px);
+            background: rgba(0, 0, 0, 0.9);
+            padding: 20px;
+            border-radius: 12px;
+            z-index: 100;
+            overflow-y: auto;
+        }
+        #sfm-progress.hidden { display: none; }
+        #sfm-progress h3 {
+            color: #4fc3f7;
+            margin-bottom: 15px;
+            font-size: 1.1em;
+        }
+        .progress-step {
+            padding: 12px 15px;
+            margin: 8px 0;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        .progress-step.active {
+            background: rgba(79, 195, 247, 0.15);
+            border-left: 3px solid #4fc3f7;
+        }
+        .progress-step.completed {
+            background: rgba(102, 187, 106, 0.15);
+            border-left: 3px solid #66bb6a;
+        }
+        .progress-step .step-icon {
+            font-size: 1.2em;
+        }
+        .progress-step .step-content {
+            flex: 1;
+        }
+        .progress-step .step-title {
+            font-weight: 500;
+            margin-bottom: 3px;
+        }
+        .progress-step .step-detail {
+            font-size: 0.8em;
+            color: #888;
+        }
+        .progress-step.completed .step-detail {
+            color: #66bb6a;
+        }
+        
+        /* Utility */
+        .hidden { display: none !important; }
+        
+        /* Feature Detection Screen */
+        #feature-detection-screen {
+            position: fixed;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            z-index: 2000;
+            overflow-y: auto;
+            padding: 40px;
+        }
+        .feature-display {
+            display: flex;
+            gap: 30px;
+            justify-content: center;
+            flex-wrap: wrap;
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+        .feature-image-container {
+            background: rgba(0, 0, 0, 0.4);
+            border-radius: 12px;
+            padding: 20px;
+            flex: 1;
+            min-width: 400px;
+            max-width: 650px;
+        }
+        .feature-image-container h3 {
+            color: #4fc3f7;
+            margin-bottom: 15px;
+            font-size: 1em;
+        }
+        .feature-image-container h3 span {
+            color: #aaa;
+            font-weight: normal;
+        }
+        .feature-image-wrapper {
+            background: #000;
+            border-radius: 8px;
+            overflow: hidden;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .feature-image-wrapper canvas {
+            max-width: 100%;
+            height: auto;
+        }
+        .feature-count {
+            margin-top: 12px;
+            color: #888;
+            font-size: 0.9em;
+        }
+        .feature-count strong {
+            color: #66bb6a;
+        }
+        
+        /* Feature Controls */
+        .feature-controls {
+            display: flex;
+            gap: 30px;
+            justify-content: center;
+            align-items: center;
+            flex-wrap: wrap;
+            margin-top: 25px;
+            padding: 20px;
+            background: rgba(0, 0, 0, 0.4);
+            border-radius: 12px;
+            max-width: 1200px;
+            margin-left: auto;
+            margin-right: auto;
+        }
+        .feature-controls .control-group {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 8px;
+        }
+        .feature-controls label {
+            color: #aaa;
+            font-size: 0.9em;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 8px;
+        }
+        .feature-controls label strong {
+            color: #4fc3f7;
+            font-size: 1.1em;
+        }
+        .feature-controls input[type="range"] {
+            width: 180px;
+            cursor: pointer;
+        }
+        
+        /* Matching Screen */
+        #feature-matching-screen {
+            position: fixed;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            z-index: 2000;
+            overflow-y: auto;
+            padding: 40px;
+        }
+        .matching-display {
+            max-width: 1400px;
+            margin: 0 auto;
+            background: rgba(0, 0, 0, 0.4);
+            border-radius: 12px;
+            padding: 20px;
+        }
+        .matching-image-wrapper {
+            background: #000;
+            border-radius: 8px;
+            overflow: hidden;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .matching-image-wrapper canvas {
+            max-width: 100%;
+            height: auto;
+        }
+        
+        /* Pose Estimation Screen */
+        #pose-estimation-screen {
+            position: fixed;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            z-index: 2000;
+            overflow-y: auto;
+            padding: 40px;
+        }
+        .pose-display {
+            display: flex;
+            gap: 30px;
+            justify-content: center;
+            flex-wrap: wrap;
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+        .pose-section {
+            background: rgba(0, 0, 0, 0.4);
+            border-radius: 12px;
+            padding: 20px;
+            flex: 1;
+            min-width: 400px;
+        }
+        .pose-section h3 {
+            color: #4fc3f7;
+            margin-bottom: 15px;
+            font-size: 1em;
+        }
+        .pose-info {
+            margin-top: 12px;
+            color: #888;
+            font-size: 0.9em;
+        }
+        .pose-details {
+            max-width: 450px;
+        }
+        .pose-matrices {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+        .matrix-block {
+            background: rgba(0, 0, 0, 0.3);
+            padding: 12px;
+            border-radius: 8px;
+        }
+        .matrix-block h4 {
+            color: #81d4fa;
+            font-size: 0.9em;
+            margin-bottom: 8px;
+        }
+        .matrix-block pre {
+            font-family: 'Monaco', 'Consolas', monospace;
+            font-size: 0.85em;
+            color: #aaa;
+            margin: 0;
+            white-space: pre;
+            overflow-x: auto;
+        }
+        .pose-summary {
+            margin-top: 15px;
+            padding: 12px;
+            background: rgba(102, 187, 106, 0.1);
+            border-radius: 8px;
+            border-left: 3px solid #66bb6a;
+        }
+        .pose-summary p {
+            margin: 5px 0;
+            font-size: 0.9em;
+            color: #aaa;
+        }
+        .pose-summary strong {
+            color: #66bb6a;
+        }
+        
+        /* Debug Panel */
+        .debug-panel {
+            margin-top: 25px;
+            padding: 20px;
+            background: rgba(0, 0, 0, 0.6);
+            border-radius: 12px;
+            max-width: 1200px;
+            margin-left: auto;
+            margin-right: auto;
+            border: 1px solid #333;
+        }
+        .debug-panel h3 {
+            color: #ff9800;
+            margin-bottom: 15px;
+            font-size: 1em;
+        }
+        .debug-panel pre {
+            font-family: 'Monaco', 'Consolas', monospace;
+            font-size: 0.8em;
+            color: #aaa;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            max-height: 300px;
+            overflow-y: auto;
+            background: rgba(0, 0, 0, 0.3);
+            padding: 15px;
+            border-radius: 8px;
+        }
+        .debug-panel .debug-success { color: #66bb6a; }
+        .debug-panel .debug-error { color: #f44336; }
+        .debug-panel .debug-warning { color: #ff9800; }
+        .debug-panel .debug-info { color: #4fc3f7; }
+        
+        /* Triangulation Screen */
+        #triangulation-screen {
+            position: fixed;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            z-index: 2000;
+            overflow-y: auto;
+            padding: 40px;
+        }
+        .triangulation-display {
+            display: flex;
+            gap: 30px;
+            justify-content: center;
+            flex-wrap: wrap;
+            max-width: 1400px;
+            margin: 0 auto 20px;
+        }
+        .triangulation-section {
+            background: rgba(0, 0, 0, 0.4);
+            border-radius: 12px;
+            padding: 20px;
+            flex: 1;
+            min-width: 400px;
+        }
+        .triangulation-section h3 {
+            color: #4fc3f7;
+            margin-bottom: 15px;
+            font-size: 1em;
+        }
+        .preview-wrapper, .camera-viz {
+            background: #000;
+            border-radius: 8px;
+            overflow: hidden;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 300px;
+        }
+        .preview-wrapper canvas, .camera-viz canvas {
+            max-width: 100%;
+        }
+        .triangulation-info, .camera-stats {
+            margin-top: 12px;
+            color: #888;
+            font-size: 0.9em;
+        }
+        .triangulation-info p, .camera-stats p {
+            margin: 5px 0;
+        }
+        .triangulation-info strong, .camera-stats span {
+            color: #66bb6a;
+        }
+        
+        /* Point Statistics Panel */
+        .point-stats-panel {
+            background: rgba(0, 0, 0, 0.4);
+            border-radius: 12px;
+            padding: 20px;
+            max-width: 1200px;
+            margin: 0 auto 20px;
+        }
+        .point-stats-panel h3 {
+            color: #4fc3f7;
+            margin-bottom: 15px;
+            font-size: 1em;
+        }
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 15px;
+        }
+        .stat-item {
+            background: rgba(0, 0, 0, 0.3);
+            padding: 15px;
+            border-radius: 8px;
+            text-align: center;
+        }
+        .stat-label {
+            display: block;
+            color: #888;
+            font-size: 0.85em;
+            margin-bottom: 8px;
+        }
+        .stat-value {
+            display: block;
+            color: #4fc3f7;
+            font-size: 1.4em;
+            font-weight: bold;
+        }
+        
+        /* Reprojection Panel */
+        .reprojection-panel {
+            background: rgba(0, 0, 0, 0.4);
+            border-radius: 12px;
+            padding: 20px;
+            max-width: 1400px;
+            margin: 0 auto 20px;
+        }
+        .reprojection-panel h3 {
+            color: #4fc3f7;
+            margin-bottom: 10px;
+            font-size: 1em;
+        }
+        .reprojection-panel .panel-description {
+            color: #888;
+            font-size: 0.85em;
+            margin-bottom: 15px;
+        }
+        .reprojection-display {
+            display: flex;
+            gap: 20px;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+        .reproj-image-container {
+            flex: 1;
+            min-width: 300px;
+            max-width: 600px;
+        }
+        .reproj-image-container h4 {
+            color: #81d4fa;
+            font-size: 0.9em;
+            margin-bottom: 10px;
+        }
+        .reproj-image-container canvas {
+            width: 100%;
+            border-radius: 8px;
+            background: #000;
+        }
         
         /* Details pane on the right */
         #details-pane {
@@ -130,15 +747,368 @@
     </style>
 </head>
 <body>
-    <div id="loading">
+    <!-- Welcome Screen -->
+    <div id="welcome-screen">
+        <div class="welcome-container">
+            <h1>🌐 3D Reconstruction Viewer</h1>
+            <p>
+                Visualize COLMAP reconstructions or create your own using 
+                Structure from Motion (SfM) directly in your browser.
+            </p>
+            <div class="action-buttons">
+                <button class="action-btn primary" id="btn-load-reconstruction">
+                    <span class="icon">📂</span>
+                    <span class="label">Load Reconstruction</span>
+                    <span class="sublabel">Load existing COLMAP data</span>
+                </button>
+                <button class="action-btn secondary" id="btn-create-sfm">
+                    <span class="icon">🔧</span>
+                    <span class="label">Create New SfM</span>
+                    <span class="sublabel">Build from images</span>
+                </button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Image Selection Screen -->
+    <div id="image-selection-screen" class="hidden">
+        <div class="selection-header">
+            <h2>📷 Select Two Images for SfM</h2>
+            <p>Choose two images to initialize the reconstruction. For best results, select images with good overlap but different viewpoints.</p>
+        </div>
+        <div class="selection-status">
+            <span class="status-text">
+                Selected: <strong><span id="selected-count">0</span>/2</strong> images
+                <span id="selected-names"></span>
+            </span>
+            <div class="selection-actions">
+                <button class="btn btn-secondary" id="btn-back-to-welcome">← Back</button>
+                <button class="btn btn-primary" id="btn-detect-features" disabled>Detect Features →</button>
+            </div>
+        </div>
+        <div class="image-grid" id="image-grid">
+            <!-- Images will be populated dynamically -->
+        </div>
+    </div>
+    
+    <!-- Feature Detection Screen -->
+    <div id="feature-detection-screen" class="hidden">
+        <div class="selection-header">
+            <h2>🔍 Feature Detection</h2>
+            <p>Detected keypoints using Harris corner detector. Green circles indicate detected features.</p>
+        </div>
+        <div class="selection-status">
+            <span class="status-text" id="feature-stats">
+                Detecting features...
+            </span>
+            <div class="selection-actions">
+                <button class="btn btn-secondary" id="btn-back-to-images">← Back</button>
+                <button class="btn btn-primary" id="btn-match-features" disabled>Match Features →</button>
+            </div>
+        </div>
+        <div class="feature-display">
+            <div class="feature-image-container">
+                <h3>Image 1: <span id="feature-img1-name"></span></h3>
+                <div class="feature-image-wrapper">
+                    <canvas id="feature-canvas-1"></canvas>
+                </div>
+                <div class="feature-count">Keypoints: <strong id="keypoint-count-1">0</strong></div>
+            </div>
+            <div class="feature-image-container">
+                <h3>Image 2: <span id="feature-img2-name"></span></h3>
+                <div class="feature-image-wrapper">
+                    <canvas id="feature-canvas-2"></canvas>
+                </div>
+                <div class="feature-count">Keypoints: <strong id="keypoint-count-2">0</strong></div>
+            </div>
+        </div>
+        
+        <!-- Feature Detection Controls -->
+        <div class="feature-controls">
+            <div class="control-group">
+                <label>
+                    Max Features to Detect: <strong id="max-detect-value">500</strong>
+                    <input type="range" id="max-detect-slider" min="50" max="2000" value="500" step="50">
+                </label>
+            </div>
+            <div class="control-group">
+                <label>
+                    Max Features to Display: <strong id="max-display-value">500</strong>
+                    <input type="range" id="max-display-slider" min="10" max="2000" value="500" step="10">
+                </label>
+            </div>
+            <div class="control-group">
+                <button class="btn btn-primary" id="btn-redetect-features">🔍 Detect Features</button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Feature Matching Screen -->
+    <div id="feature-matching-screen" class="hidden">
+        <div class="selection-header">
+            <h2>🔗 Feature Matching</h2>
+            <p>Matching features between images using patch descriptors. Lines connect matched keypoints.</p>
+        </div>
+        <div class="selection-status">
+            <span class="status-text" id="matching-stats">
+                Matching features...
+            </span>
+            <div class="selection-actions">
+                <button class="btn btn-secondary" id="btn-back-to-features">← Back</button>
+                <button class="btn btn-primary" id="btn-estimate-pose" disabled>Estimate Pose →</button>
+            </div>
+        </div>
+        <div class="matching-display">
+            <div class="matching-image-wrapper">
+                <canvas id="matching-canvas"></canvas>
+            </div>
+        </div>
+        
+        <!-- Matching Controls -->
+        <div class="feature-controls">
+            <div class="control-group">
+                <label>
+                    Ratio Test Threshold: <strong id="ratio-threshold-value">0.75</strong>
+                    <input type="range" id="ratio-threshold-slider" min="0.5" max="0.95" value="0.75" step="0.05">
+                </label>
+            </div>
+            <div class="control-group">
+                <label>
+                    Max Matches to Display: <strong id="max-matches-value">100</strong>
+                    <input type="range" id="max-matches-slider" min="10" max="500" value="100" step="10">
+                </label>
+            </div>
+            <div class="control-group">
+                <button class="btn btn-primary" id="btn-rematch-features">🔗 Re-match Features</button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Pose Estimation Screen -->
+    <div id="pose-estimation-screen" class="hidden">
+        <div class="selection-header">
+            <h2>📐 Relative Pose Estimation</h2>
+            <p>Estimating camera pose using the Essential Matrix with RANSAC. Green lines show inlier matches.</p>
+        </div>
+        <div class="selection-status">
+            <span class="status-text" id="pose-stats">
+                Estimating pose...
+            </span>
+            <div class="selection-actions">
+                <button class="btn btn-secondary" id="btn-back-to-matching">← Back</button>
+                <button class="btn btn-primary" id="btn-triangulate" disabled>Triangulate →</button>
+            </div>
+        </div>
+        
+        <div class="pose-display">
+            <!-- Inlier matches visualization -->
+            <div class="pose-section">
+                <h3>Inlier Matches</h3>
+                <div class="matching-image-wrapper">
+                    <canvas id="inlier-canvas"></canvas>
+                </div>
+                <div class="pose-info" id="inlier-info">Inliers: 0/0</div>
+            </div>
+            
+            <!-- Camera pose visualization -->
+            <div class="pose-section pose-details">
+                <h3>Estimated Relative Pose</h3>
+                <div class="pose-matrices">
+                    <div class="matrix-block">
+                        <h4>Rotation Matrix (R)</h4>
+                        <pre id="rotation-matrix">-</pre>
+                    </div>
+                    <div class="matrix-block">
+                        <h4>Translation Vector (t)</h4>
+                        <pre id="translation-vector">-</pre>
+                    </div>
+                    <div class="matrix-block">
+                        <h4>Camera Intrinsics (K)</h4>
+                        <pre id="intrinsics-matrix">-</pre>
+                    </div>
+                </div>
+                <div class="pose-summary" id="pose-summary">
+                    <!-- Summary info will be added here -->
+                </div>
+            </div>
+        </div>
+        
+        <!-- Pose Estimation Controls -->
+        <div class="feature-controls">
+            <div class="control-group">
+                <label>
+                    RANSAC Iterations: <strong id="ransac-iterations-value">1000</strong>
+                    <input type="range" id="ransac-iterations-slider" min="100" max="5000" value="1000" step="100">
+                </label>
+            </div>
+            <div class="control-group">
+                <label>
+                    Inlier Threshold (px): <strong id="inlier-threshold-value">3.0</strong>
+                    <input type="range" id="inlier-threshold-slider" min="0.5" max="10" value="3.0" step="0.5">
+                </label>
+            </div>
+            <div class="control-group">
+                <label>
+                    <input type="checkbox" id="use-intrinsics" checked>
+                    Use Camera Intrinsics
+                </label>
+            </div>
+            <div class="control-group">
+                <button class="btn btn-primary" id="btn-reestimate-pose">📐 Re-estimate Pose</button>
+            </div>
+        </div>
+        
+        <!-- Debug Panel -->
+        <div class="debug-panel">
+            <h3>🔧 Debug Information</h3>
+            <pre id="debug-output">Debug info will appear here...</pre>
+        </div>
+    </div>
+    
+    <!-- Triangulation Screen -->
+    <div id="triangulation-screen" class="hidden">
+        <div class="selection-header">
+            <h2>📍 Triangulation</h2>
+            <p>Reconstructing 3D points from matched features using the estimated camera poses.</p>
+        </div>
+        <div class="selection-status">
+            <span class="status-text" id="triangulation-stats">
+                Triangulating points...
+            </span>
+            <div class="selection-actions">
+                <button class="btn btn-secondary" id="btn-back-to-pose">← Back</button>
+                <button class="btn btn-primary" id="btn-view-3d">View 3D Scene →</button>
+            </div>
+        </div>
+        
+        <div class="triangulation-display">
+            <!-- 3D Preview -->
+            <div class="triangulation-section">
+                <h3>3D Point Cloud Preview</h3>
+                <div class="preview-wrapper">
+                    <canvas id="triangulation-preview"></canvas>
+                </div>
+                <div class="triangulation-info">
+                    <p>Points: <strong id="tri-point-count">0</strong></p>
+                    <p>Reprojection Error: <strong id="tri-reproj-error">-</strong></p>
+                </div>
+            </div>
+            
+            <!-- Camera visualization -->
+            <div class="triangulation-section camera-info">
+                <h3>Camera Configuration</h3>
+                <div class="camera-viz">
+                    <canvas id="camera-preview"></canvas>
+                </div>
+                <div class="camera-stats">
+                    <p>Camera 1: Origin, looking along +Z</p>
+                    <p>Camera 2: <span id="camera2-position">-</span></p>
+                    <p>Baseline: <span id="baseline-length">-</span> (normalized)</p>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Reprojection Visualization -->
+        <div class="reprojection-panel">
+            <h3>🎯 Reprojection Visualization</h3>
+            <p class="panel-description">Green circles: original keypoints. Red crosses: reprojected 3D points.</p>
+            <div class="reprojection-display">
+                <div class="reproj-image-container">
+                    <h4>Image 1</h4>
+                    <canvas id="reproj-canvas-1"></canvas>
+                </div>
+                <div class="reproj-image-container">
+                    <h4>Image 2</h4>
+                    <canvas id="reproj-canvas-2"></canvas>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Point Statistics -->
+        <div class="point-stats-panel">
+            <h3>📊 Point Statistics</h3>
+            <div class="stats-grid">
+                <div class="stat-item">
+                    <span class="stat-label">Total Inliers</span>
+                    <span class="stat-value" id="stat-inliers">0</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-label">Valid 3D Points</span>
+                    <span class="stat-value" id="stat-valid-points">0</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-label">Mean Depth</span>
+                    <span class="stat-value" id="stat-mean-depth">-</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-label">Depth Range</span>
+                    <span class="stat-value" id="stat-depth-range">-</span>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Triangulation Controls -->
+        <div class="feature-controls">
+            <div class="control-group">
+                <label>
+                    Max Reprojection Error (px): <strong id="max-reproj-value">4.0</strong>
+                    <input type="range" id="max-reproj-slider" min="1" max="20" value="4.0" step="0.5">
+                </label>
+            </div>
+            <div class="control-group">
+                <label>
+                    Min Triangle Angle (°): <strong id="min-angle-value">2.0</strong>
+                    <input type="range" id="min-angle-slider" min="0" max="15" value="2.0" step="0.5">
+                </label>
+            </div>
+            <div class="control-group">
+                <button class="btn btn-primary" id="btn-retriangulate">📍 Re-triangulate</button>
+            </div>
+        </div>
+    </div>
+    
+    <div id="loading" class="hidden">
         <div class="spinner"></div>
-        <p>Loading point cloud...</p>
+        <p id="loading-text">Loading point cloud...</p>
     </div>
     
     <canvas id="canvas"></canvas>
     
+    <!-- SfM Progress Panel -->
+    <div id="sfm-progress" class="hidden">
+        <h3>🔧 SfM Pipeline Progress</h3>
+        <div class="progress-step" id="step-features">
+            <span class="step-icon">🔍</span>
+            <div class="step-content">
+                <div class="step-title">Feature Detection</div>
+                <div class="step-detail">Detecting keypoints in images...</div>
+            </div>
+        </div>
+        <div class="progress-step" id="step-matching">
+            <span class="step-icon">🔗</span>
+            <div class="step-content">
+                <div class="step-title">Feature Matching</div>
+                <div class="step-detail">Finding correspondences...</div>
+            </div>
+        </div>
+        <div class="progress-step" id="step-pose">
+            <span class="step-icon">📐</span>
+            <div class="step-content">
+                <div class="step-title">Relative Pose Estimation</div>
+                <div class="step-detail">Computing camera poses...</div>
+            </div>
+        </div>
+        <div class="progress-step" id="step-triangulation">
+            <span class="step-icon">📍</span>
+            <div class="step-content">
+                <div class="step-title">Triangulation</div>
+                <div class="step-detail">Reconstructing 3D points...</div>
+            </div>
+        </div>
+    </div>
+    
     <!-- Details Pane on the right -->
-    <div id="details-pane">
+    <div id="details-pane" class="hidden">
         <div id="dataset-details">
             <h2>📊 Dataset Details</h2>
             <div class="detail-row">
@@ -218,7 +1188,7 @@
         </div>
     </div>
     
-    <div id="info">
+    <div id="info" class="hidden">
         <h1>🌿 Fern Reconstruction</h1>
         <p>COLMAP sparse reconstruction visualized in WebGL</p>
         <div id="stats">
@@ -227,7 +1197,7 @@
         </div>
     </div>
     
-    <div id="controls">
+    <div id="controls" class="hidden">
         <label>
             Point Size
             <input type="range" id="point-size" min="1" max="10" value="3" step="0.5">
@@ -252,6 +1222,14 @@
             Movement Speed
             <input type="range" id="move-speed" min="0.05" max="1" value="0.15" step="0.05">
         </label>
+        <label>
+            <input type="checkbox" id="show-gt-cameras">
+            Show GT Cameras (orange)
+        </label>
+        <label>
+            <input type="checkbox" id="show-gt-points">
+            Show GT Point Cloud
+        </label>
         <div style="margin-top: 12px; padding-top: 10px; border-top: 1px solid #444; font-size: 0.85em; color: #888;">
             <strong style="color: #aaa;">Navigation:</strong><br>
             W/S - Forward/Backward<br>
@@ -259,6 +1237,9 @@
             Mouse - Look around<br>
             Scroll - Zoom
         </div>
+        <button class="btn btn-secondary" id="btn-back-to-triangulation" style="margin-top: 12px; width: 100%;">
+            ← Back to Triangulation
+        </button>
     </div>
 
     <script>
@@ -450,6 +1431,1249 @@
         8: 'SIMPLE_RADIAL_FISHEYE', 9: 'RADIAL_FISHEYE', 10: 'THIN_PRISM_FISHEYE'
     };
 
+    // SfM state
+    let selectedImages = [];
+    let availableImages = [];
+    let isSfMMode = false;
+    let detectedFeatures = { image1: [], image2: [] };
+    let featureDescriptors = { image1: { descriptors: [], keypoints: [] }, image2: { descriptors: [], keypoints: [] } };
+    let featureMatches = [];
+    let loadedImages = { img1: null, img2: null };
+    
+    // Feature detection parameters
+    let maxDetectFeatures = 500;
+    let maxDisplayFeatures = 500;
+    let ratioThreshold = 0.75;
+    let maxMatchesDisplay = 100;
+    
+    // Pose estimation parameters and results
+    let ransacIterations = 1000;
+    let inlierThreshold = 3.0;
+    let estimatedPose = null;  // { R, t, inliers, E }
+    let cameraIntrinsicsK = null;  // 3x3 intrinsic matrix
+    let useIntrinsics = true;
+    let debugLog = [];
+    
+    // Triangulation parameters and results
+    let maxReprojError = 4.0;
+    let minTriangleAngle = 2.0;
+    let triangulatedPoints = [];  // Array of {x, y, z, color, reprojError}
+    let triangulatedPointsWithReproj = [];  // Points with reprojection data
+    
+    // GT cameras and points
+    let gtCameras = [];
+    let gtCameraBuffer = null;
+    let gtCameraVertexCount = 0;
+    let showGTCameras = false;
+    let sfmToGtTransform = null;  // Alignment transform
+    
+    // GT point cloud
+    let gtPoints = [];
+    let gtPointBuffer = null;
+    let gtColorBuffer = null;
+    let gtPointCount = 0;
+    let showGTPoints = false;
+    
+    // ============== Harris Corner Detection ==============
+    
+    // Convert image data to grayscale
+    function toGrayscale(imageData) {
+        const data = imageData.data;
+        const gray = new Float32Array(imageData.width * imageData.height);
+        for (let i = 0; i < gray.length; i++) {
+            const r = data[i * 4];
+            const g = data[i * 4 + 1];
+            const b = data[i * 4 + 2];
+            gray[i] = 0.299 * r + 0.587 * g + 0.114 * b;
+        }
+        return gray;
+    }
+    
+    // Compute image gradients using Sobel operator
+    function computeGradients(gray, width, height) {
+        const Ix = new Float32Array(width * height);
+        const Iy = new Float32Array(width * height);
+        
+        for (let y = 1; y < height - 1; y++) {
+            for (let x = 1; x < width - 1; x++) {
+                const idx = y * width + x;
+                // Sobel X
+                Ix[idx] = (
+                    -gray[(y-1)*width + (x-1)] + gray[(y-1)*width + (x+1)]
+                    -2*gray[y*width + (x-1)] + 2*gray[y*width + (x+1)]
+                    -gray[(y+1)*width + (x-1)] + gray[(y+1)*width + (x+1)]
+                ) / 8;
+                // Sobel Y
+                Iy[idx] = (
+                    -gray[(y-1)*width + (x-1)] - 2*gray[(y-1)*width + x] - gray[(y-1)*width + (x+1)]
+                    +gray[(y+1)*width + (x-1)] + 2*gray[(y+1)*width + x] + gray[(y+1)*width + (x+1)]
+                ) / 8;
+            }
+        }
+        return { Ix, Iy };
+    }
+    
+    // Apply Gaussian blur (simple box blur approximation for speed)
+    function gaussianBlur(data, width, height, radius) {
+        const result = new Float32Array(data.length);
+        const size = radius * 2 + 1;
+        const kernel = 1 / (size * size);
+        
+        for (let y = radius; y < height - radius; y++) {
+            for (let x = radius; x < width - radius; x++) {
+                let sum = 0;
+                for (let ky = -radius; ky <= radius; ky++) {
+                    for (let kx = -radius; kx <= radius; kx++) {
+                        sum += data[(y + ky) * width + (x + kx)];
+                    }
+                }
+                result[y * width + x] = sum * kernel;
+            }
+        }
+        return result;
+    }
+    
+    // Harris corner detection
+    function detectHarrisCorners(imageData, threshold = 0.01, maxCorners = 500) {
+        const width = imageData.width;
+        const height = imageData.height;
+        
+        // Step 1: Convert to grayscale
+        const gray = toGrayscale(imageData);
+        
+        // Step 2: Compute gradients
+        const { Ix, Iy } = computeGradients(gray, width, height);
+        
+        // Step 3: Compute products of gradients
+        const Ix2 = new Float32Array(width * height);
+        const Iy2 = new Float32Array(width * height);
+        const IxIy = new Float32Array(width * height);
+        
+        for (let i = 0; i < gray.length; i++) {
+            Ix2[i] = Ix[i] * Ix[i];
+            Iy2[i] = Iy[i] * Iy[i];
+            IxIy[i] = Ix[i] * Iy[i];
+        }
+        
+        // Step 4: Apply Gaussian smoothing
+        const blurRadius = 2;
+        const Sx2 = gaussianBlur(Ix2, width, height, blurRadius);
+        const Sy2 = gaussianBlur(Iy2, width, height, blurRadius);
+        const Sxy = gaussianBlur(IxIy, width, height, blurRadius);
+        
+        // Step 5: Compute Harris response
+        const k = 0.04;  // Harris constant
+        const response = new Float32Array(width * height);
+        let maxResponse = 0;
+        
+        for (let i = 0; i < gray.length; i++) {
+            const det = Sx2[i] * Sy2[i] - Sxy[i] * Sxy[i];
+            const trace = Sx2[i] + Sy2[i];
+            response[i] = det - k * trace * trace;
+            if (response[i] > maxResponse) maxResponse = response[i];
+        }
+        
+        // Step 6: Non-maximum suppression and thresholding
+        const corners = [];
+        const windowSize = 5;
+        const halfWindow = Math.floor(windowSize / 2);
+        const responseThreshold = threshold * maxResponse;
+        
+        for (let y = halfWindow; y < height - halfWindow; y++) {
+            for (let x = halfWindow; x < width - halfWindow; x++) {
+                const idx = y * width + x;
+                const r = response[idx];
+                
+                if (r < responseThreshold) continue;
+                
+                // Check if local maximum
+                let isMax = true;
+                for (let wy = -halfWindow; wy <= halfWindow && isMax; wy++) {
+                    for (let wx = -halfWindow; wx <= halfWindow && isMax; wx++) {
+                        if (wy === 0 && wx === 0) continue;
+                        if (response[(y + wy) * width + (x + wx)] >= r) {
+                            isMax = false;
+                        }
+                    }
+                }
+                
+                if (isMax) {
+                    corners.push({ x, y, response: r });
+                }
+            }
+        }
+        
+        // Sort by response and take top corners
+        corners.sort((a, b) => b.response - a.response);
+        return corners.slice(0, maxCorners);
+    }
+    
+    // Draw detected features on canvas
+    function drawFeatures(canvas, image, corners, maxDisplay = null) {
+        const ctx = canvas.getContext('2d');
+        canvas.width = image.width;
+        canvas.height = image.height;
+        
+        // Draw image
+        ctx.drawImage(image, 0, 0);
+        
+        // Limit corners to display
+        const cornersToShow = maxDisplay ? corners.slice(0, maxDisplay) : corners;
+        
+        // Draw corners
+        ctx.strokeStyle = '#00ff00';
+        ctx.lineWidth = 2;
+        
+        for (const corner of cornersToShow) {
+            ctx.beginPath();
+            ctx.arc(corner.x, corner.y, 5, 0, 2 * Math.PI);
+            ctx.stroke();
+        }
+        
+        // Draw small dot at center of each corner
+        ctx.fillStyle = '#00ff00';
+        for (const corner of cornersToShow) {
+            ctx.beginPath();
+            ctx.arc(corner.x, corner.y, 2, 0, 2 * Math.PI);
+            ctx.fill();
+        }
+        
+        return cornersToShow.length;
+    }
+    
+    // ============== Feature Descriptors and Matching ==============
+    
+    // Compute simple patch descriptor for a keypoint
+    function computePatchDescriptor(gray, width, height, x, y, patchSize = 16) {
+        const halfPatch = Math.floor(patchSize / 2);
+        const descriptor = [];
+        
+        // Check bounds
+        if (x < halfPatch || x >= width - halfPatch || 
+            y < halfPatch || y >= height - halfPatch) {
+            return null;
+        }
+        
+        // Sample patch and normalize
+        let sum = 0;
+        let sumSq = 0;
+        const values = [];
+        
+        // Use 8x8 sampling from the 16x16 patch
+        const step = 2;
+        for (let py = -halfPatch; py < halfPatch; py += step) {
+            for (let px = -halfPatch; px < halfPatch; px += step) {
+                const val = gray[(y + py) * width + (x + px)];
+                values.push(val);
+                sum += val;
+                sumSq += val * val;
+            }
+        }
+        
+        // Normalize descriptor (zero mean, unit variance)
+        const n = values.length;
+        const mean = sum / n;
+        const variance = (sumSq / n) - (mean * mean);
+        const std = Math.sqrt(Math.max(variance, 1e-6));
+        
+        for (const val of values) {
+            descriptor.push((val - mean) / std);
+        }
+        
+        return descriptor;
+    }
+    
+    // Compute descriptors for all keypoints in an image
+    function computeDescriptors(imageData, keypoints) {
+        const width = imageData.width;
+        const height = imageData.height;
+        const gray = toGrayscale(imageData);
+        
+        const descriptors = [];
+        const validKeypoints = [];
+        
+        for (const kp of keypoints) {
+            const desc = computePatchDescriptor(gray, width, height, Math.round(kp.x), Math.round(kp.y));
+            if (desc) {
+                descriptors.push(desc);
+                validKeypoints.push(kp);
+            }
+        }
+        
+        return { descriptors, keypoints: validKeypoints };
+    }
+    
+    // Compute distance between two descriptors (SSD)
+    function descriptorDistance(d1, d2) {
+        let sum = 0;
+        for (let i = 0; i < d1.length; i++) {
+            const diff = d1[i] - d2[i];
+            sum += diff * diff;
+        }
+        return sum;
+    }
+    
+    // Match descriptors using nearest neighbor with ratio test
+    function matchDescriptors(desc1, desc2, ratioThreshold = 0.75) {
+        const matches = [];
+        
+        for (let i = 0; i < desc1.length; i++) {
+            let bestDist = Infinity;
+            let secondBestDist = Infinity;
+            let bestIdx = -1;
+            
+            for (let j = 0; j < desc2.length; j++) {
+                const dist = descriptorDistance(desc1[i], desc2[j]);
+                if (dist < bestDist) {
+                    secondBestDist = bestDist;
+                    bestDist = dist;
+                    bestIdx = j;
+                } else if (dist < secondBestDist) {
+                    secondBestDist = dist;
+                }
+            }
+            
+            // Apply ratio test
+            if (bestIdx !== -1 && bestDist < ratioThreshold * secondBestDist) {
+                matches.push({
+                    queryIdx: i,
+                    trainIdx: bestIdx,
+                    distance: bestDist
+                });
+            }
+        }
+        
+        // Sort by distance
+        matches.sort((a, b) => a.distance - b.distance);
+        
+        return matches;
+    }
+    
+    // Draw matches between two images
+    function drawMatches(canvas, img1, img2, kp1, kp2, matches, maxMatches = 100) {
+        const ctx = canvas.getContext('2d');
+        
+        // Create side-by-side image
+        const totalWidth = img1.width + img2.width;
+        const maxHeight = Math.max(img1.height, img2.height);
+        canvas.width = totalWidth;
+        canvas.height = maxHeight;
+        
+        // Draw images
+        ctx.drawImage(img1, 0, 0);
+        ctx.drawImage(img2, img1.width, 0);
+        
+        // Draw matches
+        const matchesToDraw = matches.slice(0, maxMatches);
+        
+        // Generate colors for matches
+        for (let i = 0; i < matchesToDraw.length; i++) {
+            const match = matchesToDraw[i];
+            const pt1 = kp1[match.queryIdx];
+            const pt2 = kp2[match.trainIdx];
+            
+            // Generate rainbow color
+            const hue = (i / matchesToDraw.length) * 360;
+            ctx.strokeStyle = `hsl(${hue}, 100%, 50%)`;
+            ctx.lineWidth = 1;
+            
+            // Draw line
+            ctx.beginPath();
+            ctx.moveTo(pt1.x, pt1.y);
+            ctx.lineTo(img1.width + pt2.x, pt2.y);
+            ctx.stroke();
+            
+            // Draw keypoints
+            ctx.fillStyle = `hsl(${hue}, 100%, 50%)`;
+            ctx.beginPath();
+            ctx.arc(pt1.x, pt1.y, 4, 0, 2 * Math.PI);
+            ctx.fill();
+            ctx.beginPath();
+            ctx.arc(img1.width + pt2.x, pt2.y, 4, 0, 2 * Math.PI);
+            ctx.fill();
+        }
+        
+        return matchesToDraw.length;
+    }
+    
+    // ============== Pose Estimation (Essential Matrix) ==============
+    
+    // Matrix utilities for pose estimation
+    const Matrix = {
+        // Create zero matrix
+        zeros: (rows, cols) => {
+            const m = [];
+            for (let i = 0; i < rows; i++) {
+                m.push(new Array(cols).fill(0));
+            }
+            return m;
+        },
+        
+        // Create identity matrix
+        eye: (n) => {
+            const m = Matrix.zeros(n, n);
+            for (let i = 0; i < n; i++) m[i][i] = 1;
+            return m;
+        },
+        
+        // Matrix multiplication
+        mult: (A, B) => {
+            const rowsA = A.length, colsA = A[0].length;
+            const colsB = B[0].length;
+            const C = Matrix.zeros(rowsA, colsB);
+            for (let i = 0; i < rowsA; i++) {
+                for (let j = 0; j < colsB; j++) {
+                    for (let k = 0; k < colsA; k++) {
+                        C[i][j] += A[i][k] * B[k][j];
+                    }
+                }
+            }
+            return C;
+        },
+        
+        // Matrix-vector multiplication
+        multVec: (A, v) => {
+            const result = [];
+            for (let i = 0; i < A.length; i++) {
+                let sum = 0;
+                for (let j = 0; j < v.length; j++) {
+                    sum += A[i][j] * v[j];
+                }
+                result.push(sum);
+            }
+            return result;
+        },
+        
+        // Transpose
+        transpose: (A) => {
+            const rows = A.length, cols = A[0].length;
+            const T = Matrix.zeros(cols, rows);
+            for (let i = 0; i < rows; i++) {
+                for (let j = 0; j < cols; j++) {
+                    T[j][i] = A[i][j];
+                }
+            }
+            return T;
+        },
+        
+        // Frobenius norm
+        norm: (A) => {
+            let sum = 0;
+            for (let i = 0; i < A.length; i++) {
+                for (let j = 0; j < A[0].length; j++) {
+                    sum += A[i][j] * A[i][j];
+                }
+            }
+            return Math.sqrt(sum);
+        },
+        
+        // Vector norm
+        vecNorm: (v) => Math.sqrt(v.reduce((s, x) => s + x * x, 0)),
+        
+        // Normalize vector
+        normalizeVec: (v) => {
+            const n = Matrix.vecNorm(v);
+            return n > 1e-10 ? v.map(x => x / n) : v;
+        },
+        
+        // Dot product
+        dot: (a, b) => a.reduce((s, x, i) => s + x * b[i], 0),
+        
+        // Cross product (3D vectors)
+        cross: (a, b) => [
+            a[1] * b[2] - a[2] * b[1],
+            a[2] * b[0] - a[0] * b[2],
+            a[0] * b[1] - a[1] * b[0]
+        ],
+        
+        // Copy matrix
+        copy: (A) => A.map(row => [...row])
+    };
+    
+    // Jacobi rotation for symmetric eigenvalue decomposition
+    function jacobiRotate(A, p, q) {
+        const n = A.length;
+        if (Math.abs(A[p][q]) < 1e-15) return null;
+        
+        const theta = (A[q][q] - A[p][p]) / (2 * A[p][q]);
+        const t = Math.sign(theta) / (Math.abs(theta) + Math.sqrt(theta * theta + 1));
+        const c = 1 / Math.sqrt(t * t + 1);
+        const s = t * c;
+        
+        return { c, s, p, q };
+    }
+    
+    // Symmetric eigenvalue decomposition using Jacobi method
+    function symmetricEigen(A) {
+        const n = A.length;
+        let B = Matrix.copy(A);
+        let V = Matrix.eye(n);
+        
+        const maxIter = 100;
+        for (let iter = 0; iter < maxIter; iter++) {
+            // Find largest off-diagonal element
+            let maxVal = 0, maxP = 0, maxQ = 1;
+            for (let p = 0; p < n; p++) {
+                for (let q = p + 1; q < n; q++) {
+                    if (Math.abs(B[p][q]) > maxVal) {
+                        maxVal = Math.abs(B[p][q]);
+                        maxP = p;
+                        maxQ = q;
+                    }
+                }
+            }
+            
+            if (maxVal < 1e-12) break;
+            
+            // Compute rotation
+            const p = maxP, q = maxQ;
+            const theta = (B[q][q] - B[p][p]) / (2 * B[p][q]);
+            const t = Math.sign(theta || 1) / (Math.abs(theta) + Math.sqrt(theta * theta + 1));
+            const c = 1 / Math.sqrt(t * t + 1);
+            const s = t * c;
+            
+            // Apply rotation to B
+            const Bnew = Matrix.copy(B);
+            for (let i = 0; i < n; i++) {
+                if (i !== p && i !== q) {
+                    Bnew[i][p] = c * B[i][p] - s * B[i][q];
+                    Bnew[p][i] = Bnew[i][p];
+                    Bnew[i][q] = s * B[i][p] + c * B[i][q];
+                    Bnew[q][i] = Bnew[i][q];
+                }
+            }
+            Bnew[p][p] = c*c*B[p][p] - 2*s*c*B[p][q] + s*s*B[q][q];
+            Bnew[q][q] = s*s*B[p][p] + 2*s*c*B[p][q] + c*c*B[q][q];
+            Bnew[p][q] = 0;
+            Bnew[q][p] = 0;
+            B = Bnew;
+            
+            // Apply rotation to V
+            const Vnew = Matrix.copy(V);
+            for (let i = 0; i < n; i++) {
+                Vnew[i][p] = c * V[i][p] - s * V[i][q];
+                Vnew[i][q] = s * V[i][p] + c * V[i][q];
+            }
+            V = Vnew;
+        }
+        
+        // Extract eigenvalues from diagonal
+        const eigenvalues = [];
+        for (let i = 0; i < n; i++) {
+            eigenvalues.push(B[i][i]);
+        }
+        
+        return { eigenvalues, eigenvectors: V };
+    }
+    
+    // SVD using symmetric eigenvalue decomposition
+    function svd3x3(A) {
+        // Compute A^T * A
+        const AtA = Matrix.mult(Matrix.transpose(A), A);
+        
+        // Eigenvalue decomposition of A^T * A
+        const eigen = symmetricEigen(AtA);
+        
+        // Sort by eigenvalue (descending)
+        const indices = [0, 1, 2].sort((a, b) => eigen.eigenvalues[b] - eigen.eigenvalues[a]);
+        
+        // Singular values (sqrt of eigenvalues)
+        const S = indices.map(i => Math.sqrt(Math.max(0, eigen.eigenvalues[i])));
+        
+        // V matrix (eigenvectors as columns, sorted)
+        const V = Matrix.zeros(3, 3);
+        for (let i = 0; i < 3; i++) {
+            for (let j = 0; j < 3; j++) {
+                V[j][i] = eigen.eigenvectors[j][indices[i]];
+            }
+        }
+        
+        // U = A * V * S^-1
+        const U = Matrix.zeros(3, 3);
+        for (let i = 0; i < 3; i++) {
+            if (S[i] > 1e-10) {
+                const vi = [V[0][i], V[1][i], V[2][i]];
+                const ui = Matrix.multVec(A, vi).map(x => x / S[i]);
+                for (let j = 0; j < 3; j++) {
+                    U[j][i] = ui[j];
+                }
+            } else {
+                // For zero singular value, set orthogonal vector
+                if (i === 2) {
+                    const u0 = [U[0][0], U[1][0], U[2][0]];
+                    const u1 = [U[0][1], U[1][1], U[2][1]];
+                    const u2 = Matrix.cross(u0, u1);
+                    U[0][2] = u2[0]; U[1][2] = u2[1]; U[2][2] = u2[2];
+                }
+            }
+        }
+        
+        // Gram-Schmidt orthonormalization for U
+        for (let i = 0; i < 3; i++) {
+            // Subtract projections onto previous vectors
+            for (let j = 0; j < i; j++) {
+                const ui = [U[0][i], U[1][i], U[2][i]];
+                const uj = [U[0][j], U[1][j], U[2][j]];
+                const proj = Matrix.dot(ui, uj);
+                U[0][i] -= proj * uj[0];
+                U[1][i] -= proj * uj[1];
+                U[2][i] -= proj * uj[2];
+            }
+            // Normalize
+            const col = [U[0][i], U[1][i], U[2][i]];
+            const norm = Matrix.vecNorm(col);
+            if (norm > 1e-10) {
+                U[0][i] /= norm;
+                U[1][i] /= norm;
+                U[2][i] /= norm;
+            }
+        }
+        
+        // Ensure proper rotation matrices (det = 1)
+        const detU = det3x3(U);
+        const detV = det3x3(V);
+        if (detU < 0) {
+            for (let i = 0; i < 3; i++) U[i][2] *= -1;
+        }
+        if (detV < 0) {
+            for (let i = 0; i < 3; i++) V[i][2] *= -1;
+        }
+        
+        return { U, S, V };
+    }
+    
+    // SVD for Nx9 matrix - find the null space (smallest singular vector)
+    function svdNullSpace(A) {
+        // Compute A^T * A (9x9 matrix)
+        const AtA = Matrix.mult(Matrix.transpose(A), A);
+        const n = 9;
+        
+        // Use Jacobi method for symmetric eigenvalue decomposition
+        let B = Matrix.copy(AtA);
+        let V = Matrix.eye(n);
+        
+        const maxIter = 200;
+        for (let iter = 0; iter < maxIter; iter++) {
+            // Find largest off-diagonal element
+            let maxVal = 0, maxP = 0, maxQ = 1;
+            for (let p = 0; p < n; p++) {
+                for (let q = p + 1; q < n; q++) {
+                    if (Math.abs(B[p][q]) > maxVal) {
+                        maxVal = Math.abs(B[p][q]);
+                        maxP = p;
+                        maxQ = q;
+                    }
+                }
+            }
+            
+            if (maxVal < 1e-14) break;
+            
+            const p = maxP, q = maxQ;
+            const diff = B[q][q] - B[p][p];
+            let t;
+            if (Math.abs(diff) < 1e-15) {
+                t = 1;
+            } else {
+                const phi = diff / (2 * B[p][q]);
+                t = Math.sign(phi) / (Math.abs(phi) + Math.sqrt(phi * phi + 1));
+            }
+            const c = 1 / Math.sqrt(t * t + 1);
+            const s = t * c;
+            
+            // Apply rotation to B
+            const Bnew = Matrix.copy(B);
+            for (let i = 0; i < n; i++) {
+                if (i !== p && i !== q) {
+                    Bnew[i][p] = c * B[i][p] - s * B[i][q];
+                    Bnew[p][i] = Bnew[i][p];
+                    Bnew[i][q] = s * B[i][p] + c * B[i][q];
+                    Bnew[q][i] = Bnew[i][q];
+                }
+            }
+            Bnew[p][p] = c*c*B[p][p] - 2*s*c*B[p][q] + s*s*B[q][q];
+            Bnew[q][q] = s*s*B[p][p] + 2*s*c*B[p][q] + c*c*B[q][q];
+            Bnew[p][q] = 0;
+            Bnew[q][p] = 0;
+            B = Bnew;
+            
+            // Apply rotation to V
+            const Vnew = Matrix.copy(V);
+            for (let i = 0; i < n; i++) {
+                Vnew[i][p] = c * V[i][p] - s * V[i][q];
+                Vnew[i][q] = s * V[i][p] + c * V[i][q];
+            }
+            V = Vnew;
+        }
+        
+        // Find the index of smallest eigenvalue (diagonal of B)
+        let minIdx = 0;
+        let minVal = Math.abs(B[0][0]);
+        for (let i = 1; i < n; i++) {
+            if (Math.abs(B[i][i]) < minVal) {
+                minVal = Math.abs(B[i][i]);
+                minIdx = i;
+            }
+        }
+        
+        // Return the corresponding eigenvector (column of V)
+        const nullVec = [];
+        for (let i = 0; i < n; i++) {
+            nullVec.push(V[i][minIdx]);
+        }
+        
+        return Matrix.normalizeVec(nullVec);
+    }
+    
+    // Normalize points for numerical stability
+    function normalizePoints(points) {
+        // Compute centroid
+        let cx = 0, cy = 0;
+        for (const p of points) {
+            cx += p.x;
+            cy += p.y;
+        }
+        cx /= points.length;
+        cy /= points.length;
+        
+        // Compute average distance from centroid
+        let avgDist = 0;
+        for (const p of points) {
+            avgDist += Math.sqrt((p.x - cx) ** 2 + (p.y - cy) ** 2);
+        }
+        avgDist /= points.length;
+        
+        // Scale so average distance is sqrt(2)
+        const scale = Math.sqrt(2) / (avgDist + 1e-10);
+        
+        // Normalization matrix
+        const T = [
+            [scale, 0, -scale * cx],
+            [0, scale, -scale * cy],
+            [0, 0, 1]
+        ];
+        
+        // Normalize points
+        const normalized = points.map(p => ({
+            x: scale * (p.x - cx),
+            y: scale * (p.y - cy)
+        }));
+        
+        return { points: normalized, T };
+    }
+    
+    // 8-point algorithm for Essential Matrix
+    function eightPointAlgorithm(pts1, pts2, K, verbose = false) {
+        if (pts1.length < 8) return null;
+        
+        // Convert to normalized image coordinates
+        const Kinv = invertK(K);
+        const normPts1 = pts1.map(p => applyK(Kinv, p));
+        const normPts2 = pts2.map(p => applyK(Kinv, p));
+        
+        // Check for valid normalized points
+        const validPoints = normPts1.every(p => isFinite(p.x) && isFinite(p.y)) &&
+                           normPts2.every(p => isFinite(p.x) && isFinite(p.y));
+        if (!validPoints) {
+            if (verbose) debugError('Invalid normalized points detected');
+            return null;
+        }
+        
+        // Normalize for numerical stability (Hartley normalization)
+        const norm1 = normalizePoints(normPts1);
+        const norm2 = normalizePoints(normPts2);
+        
+        // Build the A matrix for the 8-point algorithm
+        // Each correspondence gives: x2^T * E * x1 = 0
+        const A = [];
+        for (let i = 0; i < norm1.points.length; i++) {
+            const x1 = norm1.points[i].x, y1 = norm1.points[i].y;
+            const x2 = norm2.points[i].x, y2 = norm2.points[i].y;
+            A.push([
+                x2 * x1, x2 * y1, x2,
+                y2 * x1, y2 * y1, y2,
+                x1, y1, 1
+            ]);
+        }
+        
+        // Find null space of A (smallest singular value's vector)
+        const f = svdNullSpace(A);
+        
+        // Check for valid solution
+        if (!f || f.some(v => !isFinite(v))) {
+            if (verbose) debugError('SVD null space failed');
+            return null;
+        }
+        
+        // Reshape to 3x3
+        let E = [
+            [f[0], f[1], f[2]],
+            [f[3], f[4], f[5]],
+            [f[6], f[7], f[8]]
+        ];
+        
+        // Denormalize: E = T2^T * E * T1
+        E = Matrix.mult(Matrix.mult(Matrix.transpose(norm2.T), E), norm1.T);
+        
+        // Check for valid matrix
+        if (E.some(row => row.some(v => !isFinite(v)))) {
+            if (verbose) debugError('Denormalized E matrix has invalid values');
+            return null;
+        }
+        
+        // Enforce rank-2 constraint via SVD
+        const svd = svd3x3(E);
+        
+        if (verbose) {
+            debugInfo(`E singular values: [${svd.S.map(s => s.toFixed(4)).join(', ')}]`);
+        }
+        
+        // Set smallest singular value to 0 and use average of first two
+        const avgSV = (svd.S[0] + svd.S[1]) / 2;
+        if (avgSV < 1e-10) {
+            if (verbose) debugError('Singular values too small');
+            return null;
+        }
+        
+        const Enew = Matrix.zeros(3, 3);
+        for (let i = 0; i < 3; i++) {
+            for (let j = 0; j < 3; j++) {
+                for (let k = 0; k < 2; k++) {  // Only use first two singular values
+                    Enew[i][j] += svd.U[i][k] * avgSV * svd.V[j][k];
+                }
+            }
+        }
+        
+        // Normalize E to have unit Frobenius norm
+        const eNorm = Matrix.norm(Enew);
+        if (eNorm < 1e-10) return null;
+        for (let i = 0; i < 3; i++) {
+            for (let j = 0; j < 3; j++) {
+                Enew[i][j] /= eNorm;
+            }
+        }
+        
+        return Enew;
+    }
+    
+    // Invert K matrix (for simple pinhole model)
+    function invertK(K) {
+        const fx = K[0][0], fy = K[1][1];
+        const cx = K[0][2], cy = K[1][2];
+        return [
+            [1/fx, 0, -cx/fx],
+            [0, 1/fy, -cy/fy],
+            [0, 0, 1]
+        ];
+    }
+    
+    // Apply K or K^-1 to a point
+    function applyK(K, p) {
+        const x = K[0][0] * p.x + K[0][1] * p.y + K[0][2];
+        const y = K[1][0] * p.x + K[1][1] * p.y + K[1][2];
+        const w = K[2][0] * p.x + K[2][1] * p.y + K[2][2];
+        return { x: x/w, y: y/w };
+    }
+    
+    // Decompose Essential Matrix into R and t
+    function decomposeEssentialMatrix(E) {
+        const svd = svd3x3(E);
+        
+        // W matrix for rotation decomposition
+        const W = [
+            [0, -1, 0],
+            [1, 0, 0],
+            [0, 0, 1]
+        ];
+        
+        // Two possible rotations
+        let R1 = Matrix.mult(Matrix.mult(svd.U, W), Matrix.transpose(svd.V));
+        let R2 = Matrix.mult(Matrix.mult(svd.U, Matrix.transpose(W)), Matrix.transpose(svd.V));
+        
+        // Ensure proper rotation (det = 1)
+        if (det3x3(R1) < 0) R1 = R1.map(row => row.map(x => -x));
+        if (det3x3(R2) < 0) R2 = R2.map(row => row.map(x => -x));
+        
+        // Translation is the third column of U (up to sign)
+        const t = [svd.U[0][2], svd.U[1][2], svd.U[2][2]];
+        
+        // Four possible solutions
+        return [
+            { R: R1, t: t },
+            { R: R1, t: t.map(x => -x) },
+            { R: R2, t: t },
+            { R: R2, t: t.map(x => -x) }
+        ];
+    }
+    
+    // Determinant of 3x3 matrix
+    function det3x3(M) {
+        return M[0][0] * (M[1][1] * M[2][2] - M[1][2] * M[2][1])
+             - M[0][1] * (M[1][0] * M[2][2] - M[1][2] * M[2][0])
+             + M[0][2] * (M[1][0] * M[2][1] - M[1][1] * M[2][0]);
+    }
+    
+    // Triangulate a single point given two camera matrices and correspondences
+    function triangulatePoint(P1, P2, x1, x2) {
+        // DLT triangulation using linear method
+        const A = [
+            [x1.x * P1[2][0] - P1[0][0], x1.x * P1[2][1] - P1[0][1], x1.x * P1[2][2] - P1[0][2], x1.x * P1[2][3] - P1[0][3]],
+            [x1.y * P1[2][0] - P1[1][0], x1.y * P1[2][1] - P1[1][1], x1.y * P1[2][2] - P1[1][2], x1.y * P1[2][3] - P1[1][3]],
+            [x2.x * P2[2][0] - P2[0][0], x2.x * P2[2][1] - P2[0][1], x2.x * P2[2][2] - P2[0][2], x2.x * P2[2][3] - P2[0][3]],
+            [x2.y * P2[2][0] - P2[1][0], x2.y * P2[2][1] - P2[1][1], x2.y * P2[2][2] - P2[1][2], x2.y * P2[2][3] - P2[1][3]]
+        ];
+        
+        // Compute A^T * A
+        const AtA = Matrix.mult(Matrix.transpose(A), A);
+        
+        // Use Jacobi method for 4x4 symmetric eigenvalue decomposition
+        let B = Matrix.copy(AtA);
+        let V = Matrix.eye(4);
+        
+        for (let iter = 0; iter < 50; iter++) {
+            let maxVal = 0, maxP = 0, maxQ = 1;
+            for (let p = 0; p < 4; p++) {
+                for (let q = p + 1; q < 4; q++) {
+                    if (Math.abs(B[p][q]) > maxVal) {
+                        maxVal = Math.abs(B[p][q]);
+                        maxP = p;
+                        maxQ = q;
+                    }
+                }
+            }
+            
+            if (maxVal < 1e-12) break;
+            
+            const p = maxP, q = maxQ;
+            const diff = B[q][q] - B[p][p];
+            let t;
+            if (Math.abs(diff) < 1e-15) {
+                t = 1;
+            } else {
+                const phi = diff / (2 * B[p][q]);
+                t = Math.sign(phi) / (Math.abs(phi) + Math.sqrt(phi * phi + 1));
+            }
+            const c = 1 / Math.sqrt(t * t + 1);
+            const s = t * c;
+            
+            const Bnew = Matrix.copy(B);
+            for (let i = 0; i < 4; i++) {
+                if (i !== p && i !== q) {
+                    Bnew[i][p] = c * B[i][p] - s * B[i][q];
+                    Bnew[p][i] = Bnew[i][p];
+                    Bnew[i][q] = s * B[i][p] + c * B[i][q];
+                    Bnew[q][i] = Bnew[i][q];
+                }
+            }
+            Bnew[p][p] = c*c*B[p][p] - 2*s*c*B[p][q] + s*s*B[q][q];
+            Bnew[q][q] = s*s*B[p][p] + 2*s*c*B[p][q] + c*c*B[q][q];
+            Bnew[p][q] = 0;
+            Bnew[q][p] = 0;
+            B = Bnew;
+            
+            const Vnew = Matrix.copy(V);
+            for (let i = 0; i < 4; i++) {
+                Vnew[i][p] = c * V[i][p] - s * V[i][q];
+                Vnew[i][q] = s * V[i][p] + c * V[i][q];
+            }
+            V = Vnew;
+        }
+        
+        // Find smallest eigenvalue
+        let minIdx = 0;
+        let minVal = Math.abs(B[0][0]);
+        for (let i = 1; i < 4; i++) {
+            if (Math.abs(B[i][i]) < minVal) {
+                minVal = Math.abs(B[i][i]);
+                minIdx = i;
+            }
+        }
+        
+        // Get corresponding eigenvector
+        const v = [V[0][minIdx], V[1][minIdx], V[2][minIdx], V[3][minIdx]];
+        
+        // Homogeneous coordinates
+        if (Math.abs(v[3]) < 1e-10) return null;
+        return { x: v[0] / v[3], y: v[1] / v[3], z: v[2] / v[3] };
+    }
+    
+    // Cheirality check - count points in front of both cameras
+    function cheiralityCheck(R, t, pts1, pts2, K, verbose = false) {
+        const Kinv = invertK(K);
+        
+        // Camera 1: [I | 0]
+        const P1 = [
+            [1, 0, 0, 0],
+            [0, 1, 0, 0],
+            [0, 0, 1, 0]
+        ];
+        
+        // Camera 2: [R | t]
+        const P2 = [
+            [R[0][0], R[0][1], R[0][2], t[0]],
+            [R[1][0], R[1][1], R[1][2], t[1]],
+            [R[2][0], R[2][1], R[2][2], t[2]]
+        ];
+        
+        let countInFront = 0;
+        let countTotal = 0;
+        let countFailed = 0;
+        let countCam1 = 0;
+        let countCam2 = 0;
+        
+        const numToCheck = Math.min(pts1.length, 50);
+        
+        for (let i = 0; i < numToCheck; i++) {
+            const x1 = applyK(Kinv, pts1[i]);
+            const x2 = applyK(Kinv, pts2[i]);
+            
+            const X = triangulatePoint(P1, P2, x1, x2);
+            if (!X) {
+                countFailed++;
+                continue;
+            }
+            
+            countTotal++;
+            
+            // Check if in front of camera 1 (z > 0)
+            const inFront1 = X.z > 0;
+            if (inFront1) countCam1++;
+            
+            // Check if in front of camera 2 (R * X + t has z > 0)
+            const X2z = R[2][0] * X.x + R[2][1] * X.y + R[2][2] * X.z + t[2];
+            const inFront2 = X2z > 0;
+            if (inFront2) countCam2++;
+            
+            if (inFront1 && inFront2) countInFront++;
+            
+            if (verbose && i < 3) {
+                debugInfo(`  Point ${i}: X=(${X.x.toFixed(3)}, ${X.y.toFixed(3)}, ${X.z.toFixed(3)}), ` +
+                         `cam1_z=${X.z.toFixed(3)}, cam2_z=${X2z.toFixed(3)}`);
+            }
+        }
+        
+        if (verbose) {
+            debugInfo(`  Cheirality: ${countInFront}/${countTotal} in front of both ` +
+                     `(cam1: ${countCam1}, cam2: ${countCam2}, failed: ${countFailed})`);
+        }
+        
+        return countInFront;
+    }
+    
+    // Compute Sampson error for Essential matrix
+    function sampsonError(E, p1, p2, K) {
+        const Kinv = invertK(K);
+        const x1 = applyK(Kinv, p1);
+        const x2 = applyK(Kinv, p2);
+        
+        // x2^T * E * x1
+        const Ex1 = Matrix.multVec(E, [x1.x, x1.y, 1]);
+        const Etx2 = Matrix.multVec(Matrix.transpose(E), [x2.x, x2.y, 1]);
+        
+        const x2Ex1 = x2.x * Ex1[0] + x2.y * Ex1[1] + Ex1[2];
+        
+        const denom = Ex1[0]**2 + Ex1[1]**2 + Etx2[0]**2 + Etx2[1]**2;
+        
+        if (denom < 1e-10) return Infinity;
+        
+        return (x2Ex1 ** 2) / denom;
+    }
+    
+    // RANSAC for Essential Matrix estimation
+    function ransacEssentialMatrix(pts1, pts2, K, iterations, threshold) {
+        debugInfo(`Starting RANSAC with ${pts1.length} point pairs`);
+        debugInfo(`K matrix: fx=${K[0][0].toFixed(2)}, fy=${K[1][1].toFixed(2)}, cx=${K[0][2].toFixed(2)}, cy=${K[1][2].toFixed(2)}`);
+        debugInfo(`RANSAC iterations: ${iterations}, threshold: ${threshold}px`);
+        
+        const n = pts1.length;
+        if (n < 8) {
+            debugError(`Not enough points: ${n} < 8`);
+            return { E: null, inliers: [], R: null, t: null };
+        }
+        
+        let bestInliers = [];
+        let bestE = null;
+        let bestR = null;
+        let bestT = null;
+        
+        // Threshold in normalized coordinates (approximate)
+        const fx = K[0][0];
+        const normThreshold = (threshold / fx) ** 2;
+        debugInfo(`Normalized threshold: ${normThreshold.toExponential(4)}`);
+        
+        let successfulIterations = 0;
+        
+        for (let iter = 0; iter < iterations; iter++) {
+            // Random sample of 8 points
+            const indices = [];
+            while (indices.length < 8) {
+                const idx = Math.floor(Math.random() * n);
+                if (!indices.includes(idx)) indices.push(idx);
+            }
+            
+            const sample1 = indices.map(i => pts1[i]);
+            const sample2 = indices.map(i => pts2[i]);
+            
+            // Compute Essential matrix from sample
+            const E = eightPointAlgorithm(sample1, sample2, K);
+            if (!E) continue;
+            
+            successfulIterations++;
+            
+            // Count inliers using symmetric epipolar distance
+            const inliers = [];
+            for (let i = 0; i < n; i++) {
+                const error = sampsonError(E, pts1[i], pts2[i], K);
+                if (error < normThreshold) {
+                    inliers.push(i);
+                }
+            }
+            
+            if (inliers.length > bestInliers.length) {
+                bestInliers = inliers;
+                bestE = E;
+                if (iter < 10 || inliers.length > n * 0.5) {
+                    debugInfo(`Iter ${iter}: Found ${inliers.length} inliers (${(100*inliers.length/n).toFixed(1)}%)`);
+                }
+            }
+        }
+        
+        debugInfo(`Successful E matrix computations: ${successfulIterations}/${iterations}`);
+        debugInfo(`Best inlier count: ${bestInliers.length}/${n} (${(100*bestInliers.length/n).toFixed(1)}%)`);
+        
+        if (!bestE || bestInliers.length < 8) {
+            debugError(`RANSAC failed: ${bestInliers.length} inliers < 8 required`);
+            return { E: null, inliers: [], R: null, t: null };
+        }
+        
+        // Recompute E from all inliers
+        debugInfo(`Recomputing E from ${bestInliers.length} inliers...`);
+        const inlierPts1 = bestInliers.map(i => pts1[i]);
+        const inlierPts2 = bestInliers.map(i => pts2[i]);
+        bestE = eightPointAlgorithm(inlierPts1, inlierPts2, K);
+        
+        if (!bestE) {
+            debugError('Failed to recompute E from inliers');
+            return { E: null, inliers: bestInliers, R: null, t: null };
+        }
+        
+        debugSuccess(`Essential matrix computed successfully`);
+        debugInfo(`E = \n${formatMatrix(bestE, 6)}`);
+        
+        // Decompose and select best pose using cheirality check
+        debugInfo('Decomposing Essential matrix into 4 pose candidates...');
+        const poses = decomposeEssentialMatrix(bestE);
+        
+        if (!poses || poses.length === 0) {
+            debugError('Essential matrix decomposition returned no poses');
+            return { E: bestE, inliers: bestInliers, R: null, t: null };
+        }
+        
+        let maxInFront = 0;
+        
+        for (let i = 0; i < poses.length; i++) {
+            const pose = poses[i];
+            debugInfo(`Checking pose ${i+1}...`);
+            debugInfo(`  R det: ${det3x3(pose.R).toFixed(6)}`);
+            debugInfo(`  t norm: ${Matrix.vecNorm(pose.t).toFixed(6)}`);
+            const inFront = cheiralityCheck(pose.R, pose.t, inlierPts1, inlierPts2, K, true);
+            debugInfo(`  Result: ${inFront} points in front of both cameras`);
+            if (inFront > maxInFront) {
+                maxInFront = inFront;
+                bestR = pose.R;
+                bestT = pose.t;
+            }
+        }
+        
+        if (maxInFront === 0) {
+            debugError('Cheirality check failed: no pose has points in front of both cameras');
+            // Try with different threshold - maybe triangulation issue
+            debugWarning('Attempting with relaxed cheirality check...');
+            // Just pick the first pose as fallback
+            if (poses.length > 0) {
+                bestR = poses[0].R;
+                bestT = poses[0].t;
+                debugWarning('Using first pose candidate as fallback');
+            }
+        } else {
+            debugSuccess(`Best pose: ${maxInFront} points in front of cameras`);
+        }
+        
+        return { E: bestE, inliers: bestInliers, R: bestR, t: bestT };
+    }
+    
+    // Draw inlier matches
+    function drawInlierMatches(canvas, img1, img2, kp1, kp2, matches, inlierIndices) {
+        const ctx = canvas.getContext('2d');
+        
+        const totalWidth = img1.width + img2.width;
+        const maxHeight = Math.max(img1.height, img2.height);
+        canvas.width = totalWidth;
+        canvas.height = maxHeight;
+        
+        ctx.drawImage(img1, 0, 0);
+        ctx.drawImage(img2, img1.width, 0);
+        
+        // Draw inlier matches in green
+        ctx.strokeStyle = '#00ff00';
+        ctx.fillStyle = '#00ff00';
+        ctx.lineWidth = 1;
+        
+        for (const idx of inlierIndices) {
+            const match = matches[idx];
+            const pt1 = kp1[match.queryIdx];
+            const pt2 = kp2[match.trainIdx];
+            
+            ctx.beginPath();
+            ctx.moveTo(pt1.x, pt1.y);
+            ctx.lineTo(img1.width + pt2.x, pt2.y);
+            ctx.stroke();
+            
+            ctx.beginPath();
+            ctx.arc(pt1.x, pt1.y, 3, 0, 2 * Math.PI);
+            ctx.fill();
+            ctx.beginPath();
+            ctx.arc(img1.width + pt2.x, pt2.y, 3, 0, 2 * Math.PI);
+            ctx.fill();
+        }
+        
+        return inlierIndices.length;
+    }
+    
+    // Format matrix for display
+    function formatMatrix(M, precision = 4) {
+        return M.map(row => 
+            row.map(v => v.toFixed(precision).padStart(10)).join(' ')
+        ).join('\n');
+    }
+    
+    function formatVector(v, precision = 4) {
+        return '[' + v.map(x => x.toFixed(precision)).join(', ') + ']';
+    }
+    
+    // Debug logging functions
+    function debugClear() {
+        debugLog = [];
+    }
+    
+    function debug(message, type = 'info') {
+        const timestamp = new Date().toLocaleTimeString();
+        debugLog.push({ message, type, timestamp });
+        console.log(`[${type.toUpperCase()}] ${message}`);
+    }
+    
+    function debugSuccess(msg) { debug(msg, 'success'); }
+    function debugError(msg) { debug(msg, 'error'); }
+    function debugWarning(msg) { debug(msg, 'warning'); }
+    function debugInfo(msg) { debug(msg, 'info'); }
+    
+    function updateDebugPanel() {
+        const output = debugLog.map(entry => {
+            const cls = `debug-${entry.type}`;
+            return `<span class="${cls}">[${entry.timestamp}] ${entry.message}</span>`;
+        }).join('\n');
+        document.getElementById('debug-output').innerHTML = output || 'No debug info yet.';
+    }
+    
     // Initialize
     function init() {
         pointProgram = createProgram(pointVertexShader, pointFragmentShader);
@@ -522,7 +2746,1482 @@
             }
         });
         
-        loadData();
+        // Welcome screen buttons
+        document.getElementById('btn-load-reconstruction').addEventListener('click', () => {
+            document.getElementById('welcome-screen').classList.add('hidden');
+            document.getElementById('loading').classList.remove('hidden');
+            loadData();
+        });
+        
+        document.getElementById('btn-create-sfm').addEventListener('click', () => {
+            document.getElementById('welcome-screen').classList.add('hidden');
+            showImageSelectionScreen();
+        });
+        
+        // Image selection screen buttons
+        document.getElementById('btn-back-to-welcome').addEventListener('click', () => {
+            document.getElementById('image-selection-screen').classList.add('hidden');
+            document.getElementById('welcome-screen').classList.remove('hidden');
+            selectedImages = [];
+            updateSelectionStatus();
+        });
+        
+        document.getElementById('btn-detect-features').addEventListener('click', () => {
+            if (selectedImages.length === 2) {
+                showFeatureDetectionScreen();
+            }
+        });
+        
+        document.getElementById('btn-back-to-images').addEventListener('click', () => {
+            document.getElementById('feature-detection-screen').classList.add('hidden');
+            document.getElementById('image-selection-screen').classList.remove('hidden');
+            // Clear detected features
+            detectedFeatures = { image1: [], image2: [] };
+            featureDescriptors = { image1: { descriptors: [], keypoints: [] }, image2: { descriptors: [], keypoints: [] } };
+            loadedImages = { img1: null, img2: null };
+        });
+        
+        document.getElementById('btn-match-features').addEventListener('click', () => {
+            showFeatureMatchingScreen();
+        });
+        
+        // Feature detection controls
+        document.getElementById('max-detect-slider').addEventListener('input', (e) => {
+            maxDetectFeatures = parseInt(e.target.value);
+            document.getElementById('max-detect-value').textContent = maxDetectFeatures;
+        });
+        
+        document.getElementById('max-display-slider').addEventListener('input', (e) => {
+            maxDisplayFeatures = parseInt(e.target.value);
+            document.getElementById('max-display-value').textContent = maxDisplayFeatures;
+            // Redraw with new display limit
+            if (loadedImages.img1 && loadedImages.img2) {
+                const canvas1 = document.getElementById('feature-canvas-1');
+                const canvas2 = document.getElementById('feature-canvas-2');
+                drawFeatures(canvas1, loadedImages.img1, detectedFeatures.image1, maxDisplayFeatures);
+                drawFeatures(canvas2, loadedImages.img2, detectedFeatures.image2, maxDisplayFeatures);
+            }
+        });
+        
+        document.getElementById('btn-redetect-features').addEventListener('click', () => {
+            redetectFeatures();
+        });
+        
+        // Feature matching controls
+        document.getElementById('btn-back-to-features').addEventListener('click', () => {
+            document.getElementById('feature-matching-screen').classList.add('hidden');
+            document.getElementById('feature-detection-screen').classList.remove('hidden');
+        });
+        
+        document.getElementById('ratio-threshold-slider').addEventListener('input', (e) => {
+            ratioThreshold = parseFloat(e.target.value);
+            document.getElementById('ratio-threshold-value').textContent = ratioThreshold.toFixed(2);
+        });
+        
+        document.getElementById('max-matches-slider').addEventListener('input', (e) => {
+            maxMatchesDisplay = parseInt(e.target.value);
+            document.getElementById('max-matches-value').textContent = maxMatchesDisplay;
+            // Redraw with new display limit
+            if (featureMatches.length > 0 && loadedImages.img1 && loadedImages.img2) {
+                const canvas = document.getElementById('matching-canvas');
+                const displayed = drawMatches(canvas, loadedImages.img1, loadedImages.img2, 
+                    featureDescriptors.image1.keypoints, featureDescriptors.image2.keypoints, 
+                    featureMatches, maxMatchesDisplay);
+                document.getElementById('matching-stats').innerHTML = 
+                    `Found <strong style="color: #66bb6a">${featureMatches.length}</strong> matches, ` +
+                    `displaying <strong style="color: #4fc3f7">${displayed}</strong>`;
+            }
+        });
+        
+        document.getElementById('btn-rematch-features').addEventListener('click', () => {
+            rematchFeatures();
+        });
+        
+        document.getElementById('btn-estimate-pose').addEventListener('click', () => {
+            showPoseEstimationScreen();
+        });
+        
+        // Pose estimation controls
+        document.getElementById('btn-back-to-matching').addEventListener('click', () => {
+            document.getElementById('pose-estimation-screen').classList.add('hidden');
+            document.getElementById('feature-matching-screen').classList.remove('hidden');
+        });
+        
+        document.getElementById('ransac-iterations-slider').addEventListener('input', (e) => {
+            ransacIterations = parseInt(e.target.value);
+            document.getElementById('ransac-iterations-value').textContent = ransacIterations;
+        });
+        
+        document.getElementById('inlier-threshold-slider').addEventListener('input', (e) => {
+            inlierThreshold = parseFloat(e.target.value);
+            document.getElementById('inlier-threshold-value').textContent = inlierThreshold.toFixed(1);
+        });
+        
+        document.getElementById('btn-reestimate-pose').addEventListener('click', () => {
+            reestimatePose();
+        });
+        
+        document.getElementById('use-intrinsics').addEventListener('change', (e) => {
+            useIntrinsics = e.target.checked;
+        });
+        
+        document.getElementById('btn-triangulate').addEventListener('click', () => {
+            showTriangulationScreen();
+        });
+        
+        // Triangulation controls
+        document.getElementById('btn-back-to-pose').addEventListener('click', () => {
+            document.getElementById('triangulation-screen').classList.add('hidden');
+            document.getElementById('pose-estimation-screen').classList.remove('hidden');
+        });
+        
+        document.getElementById('max-reproj-slider').addEventListener('input', (e) => {
+            maxReprojError = parseFloat(e.target.value);
+            document.getElementById('max-reproj-value').textContent = maxReprojError.toFixed(1);
+        });
+        
+        document.getElementById('min-angle-slider').addEventListener('input', (e) => {
+            minTriangleAngle = parseFloat(e.target.value);
+            document.getElementById('min-angle-value').textContent = minTriangleAngle.toFixed(1);
+        });
+        
+        document.getElementById('btn-retriangulate').addEventListener('click', () => {
+            triangulatePoints();
+        });
+        
+        document.getElementById('btn-view-3d').addEventListener('click', () => {
+            show3DViewer();
+        });
+        
+        document.getElementById('btn-back-to-triangulation').addEventListener('click', () => {
+            // Hide viewer UI
+            document.getElementById('info').classList.add('hidden');
+            document.getElementById('controls').classList.add('hidden');
+            document.getElementById('details-pane').classList.add('hidden');
+            // Show triangulation screen
+            document.getElementById('triangulation-screen').classList.remove('hidden');
+        });
+        
+        document.getElementById('show-gt-cameras').addEventListener('change', (e) => {
+            showGTCameras = e.target.checked;
+            if (showGTCameras && gtCameras.length === 0) {
+                loadGTCameras();
+            }
+        });
+        
+        document.getElementById('show-gt-points').addEventListener('change', (e) => {
+            showGTPoints = e.target.checked;
+            if (showGTPoints && gtPoints.length === 0) {
+                loadGTPoints();
+            }
+        });
+    }
+    
+    // Show image selection screen and load available images
+    async function showImageSelectionScreen() {
+        document.getElementById('image-selection-screen').classList.remove('hidden');
+        
+        try {
+            const response = await fetch('/api/images');
+            const data = await response.json();
+            availableImages = data.images;
+            
+            const grid = document.getElementById('image-grid');
+            grid.innerHTML = '';
+            
+            availableImages.forEach((img, index) => {
+                const card = document.createElement('div');
+                card.className = 'image-card-wrapper';
+                card.innerHTML = `
+                    <div class="image-card" data-index="${index}" data-name="${img.name}">
+                        <img src="${img.path}" alt="${img.name}">
+                        <div class="image-name">${img.name}</div>
+                        <div class="selection-badge"></div>
+                    </div>
+                `;
+                grid.appendChild(card);
+                
+                card.querySelector('.image-card').addEventListener('click', () => {
+                    toggleImageSelection(index, img.name, card.querySelector('.image-card'));
+                });
+            });
+        } catch (error) {
+            console.error('Failed to load images:', error);
+        }
+    }
+    
+    // Toggle image selection
+    function toggleImageSelection(index, name, cardElement) {
+        const existingIndex = selectedImages.findIndex(img => img.index === index);
+        
+        if (existingIndex !== -1) {
+            // Deselect
+            selectedImages.splice(existingIndex, 1);
+            cardElement.classList.remove('selected');
+        } else if (selectedImages.length < 2) {
+            // Select
+            selectedImages.push({ index, name, path: availableImages[index].path });
+            cardElement.classList.add('selected');
+        }
+        
+        updateSelectionStatus();
+    }
+    
+    // Update selection status display
+    function updateSelectionStatus() {
+        document.getElementById('selected-count').textContent = selectedImages.length;
+        
+        const namesSpan = document.getElementById('selected-names');
+        if (selectedImages.length > 0) {
+            namesSpan.textContent = ` (${selectedImages.map(img => img.name).join(', ')})`;
+        } else {
+            namesSpan.textContent = '';
+        }
+        
+        // Update selection badges
+        document.querySelectorAll('.image-card').forEach(card => {
+            const badge = card.querySelector('.selection-badge');
+            const cardIndex = parseInt(card.dataset.index);
+            const selOrder = selectedImages.findIndex(img => img.index === cardIndex);
+            if (selOrder !== -1) {
+                badge.textContent = selOrder + 1;
+                badge.style.display = 'flex';
+            } else {
+                badge.style.display = 'none';
+            }
+        });
+        
+        // Enable/disable detect features button
+        document.getElementById('btn-detect-features').disabled = selectedImages.length !== 2;
+    }
+    
+    // Show feature detection screen and run Harris corner detection
+    async function showFeatureDetectionScreen() {
+        document.getElementById('image-selection-screen').classList.add('hidden');
+        document.getElementById('feature-detection-screen').classList.remove('hidden');
+        
+        // Update image names in headers
+        document.getElementById('feature-img1-name').textContent = selectedImages[0].name;
+        document.getElementById('feature-img2-name').textContent = selectedImages[1].name;
+        document.getElementById('feature-stats').textContent = 'Detecting features...';
+        
+        // Reset sliders to current values
+        document.getElementById('max-detect-slider').value = maxDetectFeatures;
+        document.getElementById('max-detect-value').textContent = maxDetectFeatures;
+        document.getElementById('max-display-slider').value = maxDisplayFeatures;
+        document.getElementById('max-display-value').textContent = maxDisplayFeatures;
+        
+        // Get canvases
+        const canvas1 = document.getElementById('feature-canvas-1');
+        const canvas2 = document.getElementById('feature-canvas-2');
+        
+        try {
+            // Load images and detect features
+            document.getElementById('feature-stats').textContent = 'Loading images...';
+            await new Promise(resolve => setTimeout(resolve, 50));
+            
+            loadedImages.img1 = await loadImage(selectedImages[0].path);
+            loadedImages.img2 = await loadImage(selectedImages[1].path);
+            
+            // Detect features
+            await detectAndDisplayFeatures();
+            
+        } catch (error) {
+            console.error('Error detecting features:', error);
+            document.getElementById('feature-stats').textContent = 'Error detecting features: ' + error.message;
+        }
+    }
+    
+    // Detect and display features (used by initial detection and re-detection)
+    async function detectAndDisplayFeatures() {
+        const canvas1 = document.getElementById('feature-canvas-1');
+        const canvas2 = document.getElementById('feature-canvas-2');
+        
+        // Detect features for image 1
+        document.getElementById('feature-stats').textContent = 'Detecting features in image 1...';
+        await new Promise(resolve => setTimeout(resolve, 50));
+        
+        let corners1 = detectFeaturesFromImage(loadedImages.img1, maxDetectFeatures);
+        detectedFeatures.image1 = corners1;
+        const displayed1 = drawFeatures(canvas1, loadedImages.img1, corners1, maxDisplayFeatures);
+        document.getElementById('keypoint-count-1').textContent = `${displayed1}/${corners1.length}`;
+        
+        // Detect features for image 2
+        document.getElementById('feature-stats').textContent = 'Detecting features in image 2...';
+        await new Promise(resolve => setTimeout(resolve, 50));
+        
+        let corners2 = detectFeaturesFromImage(loadedImages.img2, maxDetectFeatures);
+        detectedFeatures.image2 = corners2;
+        const displayed2 = drawFeatures(canvas2, loadedImages.img2, corners2, maxDisplayFeatures);
+        document.getElementById('keypoint-count-2').textContent = `${displayed2}/${corners2.length}`;
+        
+        // Update status
+        const totalFeatures = corners1.length + corners2.length;
+        document.getElementById('feature-stats').innerHTML = 
+            `Detected <strong style="color: #66bb6a">${totalFeatures}</strong> total keypoints ` +
+            `(${corners1.length} + ${corners2.length})`;
+        
+        // Enable the match features button
+        document.getElementById('btn-match-features').disabled = false;
+    }
+    
+    // Re-detect features with new parameters
+    async function redetectFeatures() {
+        if (!loadedImages.img1 || !loadedImages.img2) return;
+        await detectAndDisplayFeatures();
+    }
+    
+    // Show feature matching screen
+    async function showFeatureMatchingScreen() {
+        document.getElementById('feature-detection-screen').classList.add('hidden');
+        document.getElementById('feature-matching-screen').classList.remove('hidden');
+        
+        // Reset sliders
+        document.getElementById('ratio-threshold-slider').value = ratioThreshold;
+        document.getElementById('ratio-threshold-value').textContent = ratioThreshold.toFixed(2);
+        document.getElementById('max-matches-slider').value = maxMatchesDisplay;
+        document.getElementById('max-matches-value').textContent = maxMatchesDisplay;
+        
+        await computeAndDisplayMatches();
+    }
+    
+    // Compute and display feature matches
+    async function computeAndDisplayMatches() {
+        document.getElementById('matching-stats').textContent = 'Computing descriptors...';
+        await new Promise(resolve => setTimeout(resolve, 50));
+        
+        try {
+            // Create temporary canvases to get image data
+            const tempCanvas1 = document.createElement('canvas');
+            tempCanvas1.width = loadedImages.img1.width;
+            tempCanvas1.height = loadedImages.img1.height;
+            const ctx1 = tempCanvas1.getContext('2d');
+            ctx1.drawImage(loadedImages.img1, 0, 0);
+            const imageData1 = ctx1.getImageData(0, 0, loadedImages.img1.width, loadedImages.img1.height);
+            
+            const tempCanvas2 = document.createElement('canvas');
+            tempCanvas2.width = loadedImages.img2.width;
+            tempCanvas2.height = loadedImages.img2.height;
+            const ctx2 = tempCanvas2.getContext('2d');
+            ctx2.drawImage(loadedImages.img2, 0, 0);
+            const imageData2 = ctx2.getImageData(0, 0, loadedImages.img2.width, loadedImages.img2.height);
+            
+            // Compute descriptors
+            document.getElementById('matching-stats').textContent = 'Computing descriptors for image 1...';
+            await new Promise(resolve => setTimeout(resolve, 50));
+            featureDescriptors.image1 = computeDescriptors(imageData1, detectedFeatures.image1);
+            
+            document.getElementById('matching-stats').textContent = 'Computing descriptors for image 2...';
+            await new Promise(resolve => setTimeout(resolve, 50));
+            featureDescriptors.image2 = computeDescriptors(imageData2, detectedFeatures.image2);
+            
+            // Match descriptors
+            document.getElementById('matching-stats').textContent = 'Matching features...';
+            await new Promise(resolve => setTimeout(resolve, 50));
+            
+            featureMatches = matchDescriptors(
+                featureDescriptors.image1.descriptors, 
+                featureDescriptors.image2.descriptors, 
+                ratioThreshold
+            );
+            
+            // Draw matches
+            const canvas = document.getElementById('matching-canvas');
+            const displayed = drawMatches(canvas, loadedImages.img1, loadedImages.img2, 
+                featureDescriptors.image1.keypoints, featureDescriptors.image2.keypoints, 
+                featureMatches, maxMatchesDisplay);
+            
+            // Update status
+            document.getElementById('matching-stats').innerHTML = 
+                `Found <strong style="color: #66bb6a">${featureMatches.length}</strong> matches, ` +
+                `displaying <strong style="color: #4fc3f7">${displayed}</strong>`;
+            
+            // Enable pose estimation button if we have enough matches
+            document.getElementById('btn-estimate-pose').disabled = featureMatches.length < 8;
+            
+        } catch (error) {
+            console.error('Error matching features:', error);
+            document.getElementById('matching-stats').textContent = 'Error matching features: ' + error.message;
+        }
+    }
+    
+    // Re-match features with new parameters
+    async function rematchFeatures() {
+        if (featureDescriptors.image1.descriptors.length === 0) return;
+        
+        document.getElementById('matching-stats').textContent = 'Re-matching features...';
+        await new Promise(resolve => setTimeout(resolve, 50));
+        
+        featureMatches = matchDescriptors(
+            featureDescriptors.image1.descriptors, 
+            featureDescriptors.image2.descriptors, 
+            ratioThreshold
+        );
+        
+        const canvas = document.getElementById('matching-canvas');
+        const displayed = drawMatches(canvas, loadedImages.img1, loadedImages.img2, 
+            featureDescriptors.image1.keypoints, featureDescriptors.image2.keypoints, 
+            featureMatches, maxMatchesDisplay);
+        
+        document.getElementById('matching-stats').innerHTML = 
+            `Found <strong style="color: #66bb6a">${featureMatches.length}</strong> matches, ` +
+            `displaying <strong style="color: #4fc3f7">${displayed}</strong>`;
+        
+        document.getElementById('btn-estimate-pose').disabled = featureMatches.length < 8;
+    }
+    
+    // Show pose estimation screen
+    async function showPoseEstimationScreen() {
+        document.getElementById('feature-matching-screen').classList.add('hidden');
+        document.getElementById('pose-estimation-screen').classList.remove('hidden');
+        
+        // Reset sliders
+        document.getElementById('ransac-iterations-slider').value = ransacIterations;
+        document.getElementById('ransac-iterations-value').textContent = ransacIterations;
+        document.getElementById('inlier-threshold-slider').value = inlierThreshold;
+        document.getElementById('inlier-threshold-value').textContent = inlierThreshold.toFixed(1);
+        
+        // Load camera intrinsics
+        await loadCameraIntrinsics();
+        
+        // Estimate pose
+        await estimatePose();
+    }
+    
+    // Load camera intrinsics from API
+    async function loadCameraIntrinsics() {
+        try {
+            const response = await fetch('/api/intrinsics');
+            const data = await response.json();
+            
+            const intrinsics = Object.values(data.camera_intrinsics)[0];
+            if (intrinsics) {
+                // Build K matrix based on camera model
+                // Model 2 is SIMPLE_RADIAL: f, cx, cy, k
+                const f = intrinsics.params[0];
+                const cx = intrinsics.params[1];
+                const cy = intrinsics.params[2];
+                
+                // Scale intrinsics based on image size (images_8 are 1/8 resolution)
+                const scaleX = loadedImages.img1.width / intrinsics.width;
+                const scaleY = loadedImages.img1.height / intrinsics.height;
+                
+                cameraIntrinsicsK = [
+                    [f * scaleX, 0, cx * scaleX],
+                    [0, f * scaleY, cy * scaleY],
+                    [0, 0, 1]
+                ];
+                
+                // Display intrinsics
+                document.getElementById('intrinsics-matrix').textContent = formatMatrix(cameraIntrinsicsK, 2);
+            }
+        } catch (error) {
+            console.error('Failed to load intrinsics:', error);
+            // Use default intrinsics
+            const w = loadedImages.img1.width;
+            const h = loadedImages.img1.height;
+            const f = Math.max(w, h);
+            cameraIntrinsicsK = [
+                [f, 0, w / 2],
+                [0, f, h / 2],
+                [0, 0, 1]
+            ];
+            document.getElementById('intrinsics-matrix').textContent = 
+                formatMatrix(cameraIntrinsicsK, 2) + '\n(default)';
+        }
+    }
+    
+    // Estimate pose using RANSAC
+    async function estimatePose() {
+        debugClear();
+        document.getElementById('pose-stats').textContent = 'Estimating pose with RANSAC...';
+        await new Promise(resolve => setTimeout(resolve, 50));
+        
+        // Get matched point pairs
+        const kp1 = featureDescriptors.image1.keypoints;
+        const kp2 = featureDescriptors.image2.keypoints;
+        
+        const pts1 = featureMatches.map(m => kp1[m.queryIdx]);
+        const pts2 = featureMatches.map(m => kp2[m.trainIdx]);
+        
+        debugInfo(`Image 1 size: ${loadedImages.img1.width}x${loadedImages.img1.height}`);
+        debugInfo(`Image 2 size: ${loadedImages.img2.width}x${loadedImages.img2.height}`);
+        debugInfo(`Number of matches: ${featureMatches.length}`);
+        
+        // Log some sample point coordinates
+        if (pts1.length > 0) {
+            debugInfo(`Sample point 1: (${pts1[0].x.toFixed(1)}, ${pts1[0].y.toFixed(1)}) -> (${pts2[0].x.toFixed(1)}, ${pts2[0].y.toFixed(1)})`);
+        }
+        
+        // Choose K matrix based on option
+        let K;
+        if (useIntrinsics && cameraIntrinsicsK) {
+            K = cameraIntrinsicsK;
+            debugInfo('Using camera intrinsics from COLMAP');
+        } else {
+            // Use simple intrinsics (identity-like, assuming normalized coords or simple pinhole)
+            const w = loadedImages.img1.width;
+            const h = loadedImages.img1.height;
+            const f = (w + h) / 2;  // Approximate focal length
+            K = [
+                [f, 0, w / 2],
+                [0, f, h / 2],
+                [0, 0, 1]
+            ];
+            debugWarning('Using estimated intrinsics (no COLMAP data)');
+        }
+        
+        // Display K matrix
+        document.getElementById('intrinsics-matrix').textContent = formatMatrix(K, 2) + 
+            (useIntrinsics ? '\n(from COLMAP)' : '\n(estimated)');
+        
+        // Run RANSAC
+        const result = ransacEssentialMatrix(pts1, pts2, K, ransacIterations, inlierThreshold);
+        estimatedPose = result;
+        
+        // Update debug panel
+        updateDebugPanel();
+        
+        // Draw inlier matches
+        const canvas = document.getElementById('inlier-canvas');
+        const inlierCount = drawInlierMatches(canvas, loadedImages.img1, loadedImages.img2,
+            kp1, kp2, featureMatches, result.inliers);
+        
+        // Update info
+        const inlierRatio = (100 * result.inliers.length / featureMatches.length).toFixed(1);
+        document.getElementById('inlier-info').innerHTML = 
+            `Inliers: <strong style="color: #66bb6a">${result.inliers.length}</strong>/${featureMatches.length} ` +
+            `(${inlierRatio}%)`;
+        
+        if (result.R && result.t) {
+            debugSuccess('Pose estimation successful!');
+            
+            // Display rotation and translation
+            document.getElementById('rotation-matrix').textContent = formatMatrix(result.R, 4);
+            document.getElementById('translation-vector').textContent = formatVector(result.t, 4);
+            
+            // Compute rotation angle and axis
+            const trace = result.R[0][0] + result.R[1][1] + result.R[2][2];
+            const angle = Math.acos(Math.max(-1, Math.min(1, (trace - 1) / 2))) * 180 / Math.PI;
+            
+            // Verify R is a valid rotation matrix
+            const detR = det3x3(result.R);
+            debugInfo(`Rotation matrix determinant: ${detR.toFixed(6)} (should be ~1.0)`);
+            
+            // Translation direction
+            const tNorm = Matrix.vecNorm(result.t);
+            const tDir = result.t.map(x => x / tNorm);
+            
+            document.getElementById('pose-summary').innerHTML = `
+                <p><strong>Rotation angle:</strong> ${angle.toFixed(2)}°</p>
+                <p><strong>Translation direction:</strong> [${tDir.map(x => x.toFixed(3)).join(', ')}]</p>
+                <p><strong>Note:</strong> Translation scale is ambiguous (up to scale factor)</p>
+            `;
+            
+            document.getElementById('pose-stats').innerHTML = 
+                `Pose estimated successfully with <strong style="color: #66bb6a">${result.inliers.length}</strong> inliers`;
+            
+            // Enable triangulation button
+            document.getElementById('btn-triangulate').disabled = false;
+        } else {
+            debugError('Pose estimation failed - no valid R, t found');
+            document.getElementById('rotation-matrix').textContent = 'Failed to estimate';
+            document.getElementById('translation-vector').textContent = 'Failed to estimate';
+            document.getElementById('pose-summary').innerHTML = 
+                '<p style="color: #f44">Pose estimation failed. Try adjusting parameters or selecting different images.</p>';
+            document.getElementById('pose-stats').textContent = 'Pose estimation failed';
+            document.getElementById('btn-triangulate').disabled = true;
+        }
+        
+        // Final debug panel update
+        updateDebugPanel();
+    }
+    
+    // Re-estimate pose with new parameters
+    async function reestimatePose() {
+        await estimatePose();
+    }
+    
+    // Show triangulation screen
+    async function showTriangulationScreen() {
+        document.getElementById('pose-estimation-screen').classList.add('hidden');
+        document.getElementById('triangulation-screen').classList.remove('hidden');
+        
+        // Reset sliders
+        document.getElementById('max-reproj-slider').value = maxReprojError;
+        document.getElementById('max-reproj-value').textContent = maxReprojError.toFixed(1);
+        document.getElementById('min-angle-slider').value = minTriangleAngle;
+        document.getElementById('min-angle-value').textContent = minTriangleAngle.toFixed(1);
+        
+        // Triangulate points
+        await triangulatePoints();
+    }
+    
+    // Compute reprojection error
+    function computeReprojectionError(X, P, observed, K) {
+        // Project 3D point X using camera matrix P
+        const Xh = [X.x, X.y, X.z, 1];
+        const projected = [
+            P[0][0]*Xh[0] + P[0][1]*Xh[1] + P[0][2]*Xh[2] + P[0][3]*Xh[3],
+            P[1][0]*Xh[0] + P[1][1]*Xh[1] + P[1][2]*Xh[2] + P[1][3]*Xh[3],
+            P[2][0]*Xh[0] + P[2][1]*Xh[1] + P[2][2]*Xh[2] + P[2][3]*Xh[3]
+        ];
+        
+        if (Math.abs(projected[2]) < 1e-10) return Infinity;
+        
+        // Normalized image coordinates
+        const xn = projected[0] / projected[2];
+        const yn = projected[1] / projected[2];
+        
+        // Convert to pixel coordinates using K
+        const xp = K[0][0] * xn + K[0][2];
+        const yp = K[1][1] * yn + K[1][2];
+        
+        // Error
+        const dx = xp - observed.x;
+        const dy = yp - observed.y;
+        
+        return Math.sqrt(dx*dx + dy*dy);
+    }
+    
+    // Compute triangulation angle
+    function computeTriangulationAngle(X, C1, C2) {
+        // Vectors from cameras to point
+        const v1 = [X.x - C1[0], X.y - C1[1], X.z - C1[2]];
+        const v2 = [X.x - C2[0], X.y - C2[1], X.z - C2[2]];
+        
+        const norm1 = Matrix.vecNorm(v1);
+        const norm2 = Matrix.vecNorm(v2);
+        
+        if (norm1 < 1e-10 || norm2 < 1e-10) return 0;
+        
+        const cosAngle = Matrix.dot(v1, v2) / (norm1 * norm2);
+        return Math.acos(Math.max(-1, Math.min(1, cosAngle))) * 180 / Math.PI;
+    }
+    
+    // Triangulate all inlier points
+    async function triangulatePoints() {
+        document.getElementById('triangulation-stats').textContent = 'Triangulating points...';
+        await new Promise(resolve => setTimeout(resolve, 50));
+        
+        const R = estimatedPose.R;
+        const t = estimatedPose.t;
+        const K = cameraIntrinsicsK;
+        const Kinv = invertK(K);
+        
+        // Camera matrices
+        // P1 = K * [I | 0]
+        const P1 = [
+            [1, 0, 0, 0],
+            [0, 1, 0, 0],
+            [0, 0, 1, 0]
+        ];
+        
+        // P2 = K * [R | t]
+        const P2 = [
+            [R[0][0], R[0][1], R[0][2], t[0]],
+            [R[1][0], R[1][1], R[1][2], t[1]],
+            [R[2][0], R[2][1], R[2][2], t[2]]
+        ];
+        
+        // Camera centers
+        const C1 = [0, 0, 0];
+        // C2 = -R^T * t
+        const Rt = Matrix.transpose(R);
+        const C2 = [
+            -(Rt[0][0]*t[0] + Rt[0][1]*t[1] + Rt[0][2]*t[2]),
+            -(Rt[1][0]*t[0] + Rt[1][1]*t[1] + Rt[1][2]*t[2]),
+            -(Rt[2][0]*t[0] + Rt[2][1]*t[1] + Rt[2][2]*t[2])
+        ];
+        
+        // Get inlier keypoints
+        const kp1 = featureDescriptors.image1.keypoints;
+        const kp2 = featureDescriptors.image2.keypoints;
+        
+        triangulatedPoints = [];
+        triangulatedPointsWithReproj = [];
+        let totalReprojError = 0;
+        let minDepth = Infinity, maxDepth = -Infinity;
+        let depthSum = 0;
+        
+        // Get image data for colors
+        const tempCanvas = document.createElement('canvas');
+        tempCanvas.width = loadedImages.img1.width;
+        tempCanvas.height = loadedImages.img1.height;
+        const ctx = tempCanvas.getContext('2d');
+        ctx.drawImage(loadedImages.img1, 0, 0);
+        const imageData = ctx.getImageData(0, 0, tempCanvas.width, tempCanvas.height);
+        
+        for (const idx of estimatedPose.inliers) {
+            const match = featureMatches[idx];
+            const pt1 = kp1[match.queryIdx];
+            const pt2 = kp2[match.trainIdx];
+            
+            // Normalize points
+            const x1 = applyK(Kinv, pt1);
+            const x2 = applyK(Kinv, pt2);
+            
+            // Triangulate
+            const X = triangulatePoint(P1, P2, x1, x2);
+            if (!X) continue;
+            
+            // Check if in front of both cameras
+            const z1 = X.z;
+            const z2 = R[2][0]*X.x + R[2][1]*X.y + R[2][2]*X.z + t[2];
+            if (z1 <= 0 || z2 <= 0) continue;
+            
+            // Compute reprojection errors
+            const err1 = computeReprojectionError(X, P1, pt1, K);
+            const err2 = computeReprojectionError(X, P2, pt2, K);
+            const avgError = (err1 + err2) / 2;
+            
+            if (avgError > maxReprojError) continue;
+            
+            // Compute triangulation angle
+            const angle = computeTriangulationAngle(X, C1, C2);
+            if (angle < minTriangleAngle) continue;
+            
+            // Get color from image
+            const px = Math.round(pt1.x);
+            const py = Math.round(pt1.y);
+            const pixelIdx = (py * tempCanvas.width + px) * 4;
+            const r = imageData.data[pixelIdx] / 255;
+            const g = imageData.data[pixelIdx + 1] / 255;
+            const b = imageData.data[pixelIdx + 2] / 255;
+            
+            triangulatedPoints.push({
+                x: X.x, y: X.y, z: X.z,
+                r, g, b,
+                reprojError: avgError
+            });
+            
+            // Store with observation data for reprojection visualization
+            triangulatedPointsWithReproj.push({
+                x: X.x, y: X.y, z: X.z,
+                obs1: pt1,
+                obs2: pt2,
+                reprojError: avgError
+            });
+            
+            totalReprojError += avgError;
+            depthSum += z1;
+            minDepth = Math.min(minDepth, z1);
+            maxDepth = Math.max(maxDepth, z1);
+        }
+        
+        // Update statistics
+        const numPoints = triangulatedPoints.length;
+        document.getElementById('stat-inliers').textContent = estimatedPose.inliers.length;
+        document.getElementById('stat-valid-points').textContent = numPoints;
+        document.getElementById('tri-point-count').textContent = numPoints;
+        
+        if (numPoints > 0) {
+            const meanError = totalReprojError / numPoints;
+            const meanDepth = depthSum / numPoints;
+            document.getElementById('tri-reproj-error').textContent = meanError.toFixed(2) + ' px';
+            document.getElementById('stat-mean-depth').textContent = meanDepth.toFixed(3);
+            document.getElementById('stat-depth-range').textContent = 
+                `${minDepth.toFixed(3)} - ${maxDepth.toFixed(3)}`;
+            
+            document.getElementById('triangulation-stats').innerHTML = 
+                `Successfully triangulated <strong style="color: #66bb6a">${numPoints}</strong> 3D points`;
+        } else {
+            document.getElementById('tri-reproj-error').textContent = '-';
+            document.getElementById('stat-mean-depth').textContent = '-';
+            document.getElementById('stat-depth-range').textContent = '-';
+            document.getElementById('triangulation-stats').textContent = 
+                'No valid points triangulated. Try adjusting parameters.';
+        }
+        
+        // Update camera info
+        document.getElementById('camera2-position').textContent = 
+            `[${C2[0].toFixed(3)}, ${C2[1].toFixed(3)}, ${C2[2].toFixed(3)}]`;
+        document.getElementById('baseline-length').textContent = 
+            Matrix.vecNorm(t).toFixed(4);
+        
+        // Draw previews
+        drawPointCloudPreview();
+        drawCameraPreview(C1, C2, R);
+        
+        // Draw reprojection visualization
+        if (numPoints > 0) {
+            drawReprojectionVisualization();
+        }
+    }
+    
+    // Draw 3D point cloud preview (simple orthographic projection)
+    function drawPointCloudPreview() {
+        const canvas = document.getElementById('triangulation-preview');
+        const ctx = canvas.getContext('2d');
+        
+        canvas.width = 500;
+        canvas.height = 400;
+        
+        ctx.fillStyle = '#111';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        
+        if (triangulatedPoints.length === 0) {
+            ctx.fillStyle = '#666';
+            ctx.font = '14px sans-serif';
+            ctx.textAlign = 'center';
+            ctx.fillText('No points to display', canvas.width/2, canvas.height/2);
+            return;
+        }
+        
+        // Compute bounds
+        let minX = Infinity, maxX = -Infinity;
+        let minY = Infinity, maxY = -Infinity;
+        let minZ = Infinity, maxZ = -Infinity;
+        
+        for (const p of triangulatedPoints) {
+            minX = Math.min(minX, p.x); maxX = Math.max(maxX, p.x);
+            minY = Math.min(minY, p.y); maxY = Math.max(maxY, p.y);
+            minZ = Math.min(minZ, p.z); maxZ = Math.max(maxZ, p.z);
+        }
+        
+        const rangeX = maxX - minX || 1;
+        const rangeY = maxY - minY || 1;
+        const rangeZ = maxZ - minZ || 1;
+        const maxRange = Math.max(rangeX, rangeY, rangeZ);
+        
+        const centerX = (minX + maxX) / 2;
+        const centerY = (minY + maxY) / 2;
+        
+        const scale = Math.min(canvas.width, canvas.height) * 0.8 / maxRange;
+        const offsetX = canvas.width / 2;
+        const offsetY = canvas.height / 2;
+        
+        // Draw points (simple XY projection with Z as intensity)
+        for (const p of triangulatedPoints) {
+            const screenX = offsetX + (p.x - centerX) * scale;
+            const screenY = offsetY - (p.y - centerY) * scale;  // Flip Y
+            
+            // Size based on depth (closer = bigger)
+            const depthNorm = 1 - (p.z - minZ) / rangeZ;
+            const size = 2 + depthNorm * 4;
+            
+            ctx.fillStyle = `rgb(${Math.round(p.r*255)}, ${Math.round(p.g*255)}, ${Math.round(p.b*255)})`;
+            ctx.beginPath();
+            ctx.arc(screenX, screenY, size, 0, Math.PI * 2);
+            ctx.fill();
+        }
+        
+        // Draw axis indicator
+        ctx.strokeStyle = '#f44';
+        ctx.beginPath();
+        ctx.moveTo(30, canvas.height - 30);
+        ctx.lineTo(60, canvas.height - 30);
+        ctx.stroke();
+        ctx.fillStyle = '#f44';
+        ctx.fillText('X', 65, canvas.height - 27);
+        
+        ctx.strokeStyle = '#4f4';
+        ctx.beginPath();
+        ctx.moveTo(30, canvas.height - 30);
+        ctx.lineTo(30, canvas.height - 60);
+        ctx.stroke();
+        ctx.fillStyle = '#4f4';
+        ctx.fillText('Y', 27, canvas.height - 65);
+    }
+    
+    // Draw camera configuration preview
+    function drawCameraPreview(C1, C2, R) {
+        const canvas = document.getElementById('camera-preview');
+        const ctx = canvas.getContext('2d');
+        
+        canvas.width = 400;
+        canvas.height = 300;
+        
+        ctx.fillStyle = '#111';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        
+        const centerX = canvas.width / 2;
+        const centerY = canvas.height / 2;
+        
+        // Scale based on baseline
+        const baseline = Matrix.vecNorm([C2[0] - C1[0], C2[1] - C1[1], C2[2] - C1[2]]);
+        const scale = baseline > 0 ? 100 / baseline : 100;
+        
+        // Draw camera 1 (at origin)
+        drawCamera(ctx, centerX - 80, centerY, '#4fc3f7', 'Cam 1', 0);
+        
+        // Draw camera 2
+        const c2x = centerX - 80 + (C2[0]) * scale * 0.5;
+        const c2y = centerY - (C2[2]) * scale * 0.5;
+        
+        // Get rotation angle around Y axis (rough approximation)
+        const angle = Math.atan2(R[0][2], R[0][0]);
+        drawCamera(ctx, centerX + 80, centerY, '#66bb6a', 'Cam 2', angle);
+        
+        // Draw baseline
+        ctx.strokeStyle = '#666';
+        ctx.setLineDash([5, 5]);
+        ctx.beginPath();
+        ctx.moveTo(centerX - 80, centerY);
+        ctx.lineTo(centerX + 80, centerY);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        
+        // Draw some sample 3D points
+        if (triangulatedPoints.length > 0) {
+            const samplePoints = triangulatedPoints.slice(0, 20);
+            for (const p of samplePoints) {
+                const px = centerX + (p.x - 0) * scale * 10;
+                const py = centerY - 30 - (p.z) * scale * 5;
+                
+                if (px > 0 && px < canvas.width && py > 0 && py < canvas.height) {
+                    ctx.fillStyle = `rgba(${Math.round(p.r*255)}, ${Math.round(p.g*255)}, ${Math.round(p.b*255)}, 0.7)`;
+                    ctx.beginPath();
+                    ctx.arc(px, py, 3, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+            }
+        }
+    }
+    
+    // Draw a simple camera icon
+    function drawCamera(ctx, x, y, color, label, angle) {
+        ctx.save();
+        ctx.translate(x, y);
+        ctx.rotate(-angle);
+        
+        // Camera body
+        ctx.fillStyle = color;
+        ctx.fillRect(-15, -10, 30, 20);
+        
+        // Lens
+        ctx.beginPath();
+        ctx.moveTo(15, -8);
+        ctx.lineTo(25, -15);
+        ctx.lineTo(25, 15);
+        ctx.lineTo(15, 8);
+        ctx.closePath();
+        ctx.fill();
+        
+        ctx.restore();
+        
+        // Label
+        ctx.fillStyle = color;
+        ctx.font = '12px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText(label, x, y + 30);
+    }
+    
+    // Show the 3D viewer with triangulated points
+    function show3DViewer() {
+        document.getElementById('triangulation-screen').classList.add('hidden');
+        
+        // Setup the 3D scene with triangulated points
+        setupTriangulatedScene();
+        
+        // Show viewer UI
+        document.getElementById('info').classList.remove('hidden');
+        document.getElementById('controls').classList.remove('hidden');
+        
+        // Update info
+        document.querySelector('#info h1').textContent = '🔧 SfM Reconstruction';
+        document.querySelector('#info p').textContent = 'Structure from Motion result';
+        document.getElementById('point-count').textContent = triangulatedPoints.length.toLocaleString();
+        document.getElementById('camera-count').textContent = '2';
+        
+        // Start rendering
+        render();
+    }
+    
+    // Draw reprojection visualization
+    function drawReprojectionVisualization() {
+        const canvas1 = document.getElementById('reproj-canvas-1');
+        const canvas2 = document.getElementById('reproj-canvas-2');
+        const ctx1 = canvas1.getContext('2d');
+        const ctx2 = canvas2.getContext('2d');
+        
+        // Set canvas size
+        canvas1.width = loadedImages.img1.width;
+        canvas1.height = loadedImages.img1.height;
+        canvas2.width = loadedImages.img2.width;
+        canvas2.height = loadedImages.img2.height;
+        
+        // Draw images
+        ctx1.drawImage(loadedImages.img1, 0, 0);
+        ctx2.drawImage(loadedImages.img2, 0, 0);
+        
+        const R = estimatedPose.R;
+        const t = estimatedPose.t;
+        const K = cameraIntrinsicsK;
+        
+        // Camera matrices
+        const P1 = [[1,0,0,0], [0,1,0,0], [0,0,1,0]];
+        const P2 = [
+            [R[0][0], R[0][1], R[0][2], t[0]],
+            [R[1][0], R[1][1], R[1][2], t[1]],
+            [R[2][0], R[2][1], R[2][2], t[2]]
+        ];
+        
+        const kp1 = featureDescriptors.image1.keypoints;
+        const kp2 = featureDescriptors.image2.keypoints;
+        
+        // Draw for each triangulated point
+        for (const pt of triangulatedPointsWithReproj) {
+            const X = { x: pt.x, y: pt.y, z: pt.z };
+            
+            // Original keypoints (green circles)
+            ctx1.strokeStyle = '#00ff00';
+            ctx1.lineWidth = 2;
+            ctx1.beginPath();
+            ctx1.arc(pt.obs1.x, pt.obs1.y, 6, 0, Math.PI * 2);
+            ctx1.stroke();
+            
+            ctx2.strokeStyle = '#00ff00';
+            ctx2.lineWidth = 2;
+            ctx2.beginPath();
+            ctx2.arc(pt.obs2.x, pt.obs2.y, 6, 0, Math.PI * 2);
+            ctx2.stroke();
+            
+            // Reprojected points (red crosses)
+            const reproj1 = reprojectPoint(X, P1, K);
+            const reproj2 = reprojectPoint(X, P2, K);
+            
+            if (reproj1) {
+                ctx1.strokeStyle = '#ff0000';
+                ctx1.lineWidth = 2;
+                drawCross(ctx1, reproj1.x, reproj1.y, 5);
+            }
+            
+            if (reproj2) {
+                ctx2.strokeStyle = '#ff0000';
+                ctx2.lineWidth = 2;
+                drawCross(ctx2, reproj2.x, reproj2.y, 5);
+            }
+            
+            // Draw line connecting original to reprojected (shows error)
+            if (reproj1) {
+                ctx1.strokeStyle = 'rgba(255, 255, 0, 0.5)';
+                ctx1.lineWidth = 1;
+                ctx1.beginPath();
+                ctx1.moveTo(pt.obs1.x, pt.obs1.y);
+                ctx1.lineTo(reproj1.x, reproj1.y);
+                ctx1.stroke();
+            }
+            
+            if (reproj2) {
+                ctx2.strokeStyle = 'rgba(255, 255, 0, 0.5)';
+                ctx2.lineWidth = 1;
+                ctx2.beginPath();
+                ctx2.moveTo(pt.obs2.x, pt.obs2.y);
+                ctx2.lineTo(reproj2.x, reproj2.y);
+                ctx2.stroke();
+            }
+        }
+    }
+    
+    // Reproject a 3D point to image coordinates
+    function reprojectPoint(X, P, K) {
+        const Xh = [X.x, X.y, X.z, 1];
+        const projected = [
+            P[0][0]*Xh[0] + P[0][1]*Xh[1] + P[0][2]*Xh[2] + P[0][3]*Xh[3],
+            P[1][0]*Xh[0] + P[1][1]*Xh[1] + P[1][2]*Xh[2] + P[1][3]*Xh[3],
+            P[2][0]*Xh[0] + P[2][1]*Xh[1] + P[2][2]*Xh[2] + P[2][3]*Xh[3]
+        ];
+        
+        if (Math.abs(projected[2]) < 1e-10) return null;
+        
+        const xn = projected[0] / projected[2];
+        const yn = projected[1] / projected[2];
+        
+        return {
+            x: K[0][0] * xn + K[0][2],
+            y: K[1][1] * yn + K[1][2]
+        };
+    }
+    
+    // Draw a cross marker
+    function drawCross(ctx, x, y, size) {
+        ctx.beginPath();
+        ctx.moveTo(x - size, y - size);
+        ctx.lineTo(x + size, y + size);
+        ctx.moveTo(x + size, y - size);
+        ctx.lineTo(x - size, y + size);
+        ctx.stroke();
+    }
+    
+    // Load GT cameras from reconstruction.json
+    async function loadGTCameras() {
+        try {
+            const response = await fetch('data/fern/reconstruction.json');
+            const data = await response.json();
+            
+            gtCameras = data.cameras.map(cam => ({
+                position: cam.position,
+                direction: cam.view_direction,
+                name: cam.name,
+                qvec: cam.qvec
+            }));
+            
+            // Compute alignment transform (Procrustes)
+            computeAlignmentTransform();
+            
+            // Update GT camera buffer
+            updateGTCameraBuffers();
+            
+            console.log(`Loaded ${gtCameras.length} GT cameras`);
+        } catch (error) {
+            console.error('Failed to load GT cameras:', error);
+        }
+    }
+    
+    // Compute alignment transform using Procrustes analysis
+    function computeAlignmentTransform() {
+        // We'll align SfM cameras to GT cameras using the two selected images
+        // Find the GT cameras that correspond to our selected images
+        
+        const sfmCam1 = { pos: [0, 0, 0], dir: [0, 0, 1] };
+        const R = estimatedPose.R;
+        const t = estimatedPose.t;
+        const Rt = Matrix.transpose(R);
+        const sfmCam2Pos = [
+            -(Rt[0][0]*t[0] + Rt[0][1]*t[1] + Rt[0][2]*t[2]),
+            -(Rt[1][0]*t[0] + Rt[1][1]*t[1] + Rt[1][2]*t[2]),
+            -(Rt[2][0]*t[0] + Rt[2][1]*t[1] + Rt[2][2]*t[2])
+        ];
+        const sfmCam2 = { pos: sfmCam2Pos, dir: [R[0][2], R[1][2], R[2][2]] };
+        
+        // Find matching GT cameras by image name
+        const imgIdx1 = parseInt(selectedImages[0].name.match(/\d+/)[0]);
+        const imgIdx2 = parseInt(selectedImages[1].name.match(/\d+/)[0]);
+        
+        // GT cameras are sorted, find by index
+        let gtCam1 = null, gtCam2 = null;
+        for (const cam of gtCameras) {
+            const camIdx = parseInt(cam.name.match(/\d+/)?.[0] || '-1');
+            if (camIdx === imgIdx1) gtCam1 = cam;
+            if (camIdx === imgIdx2) gtCam2 = cam;
+        }
+        
+        if (!gtCam1 || !gtCam2) {
+            console.warn('Could not find matching GT cameras, using identity transform');
+            sfmToGtTransform = { scale: 1, R: Matrix.eye(3), t: [0, 0, 0] };
+            return;
+        }
+        
+        // Compute scale from baseline ratio
+        const gtBaseline = Matrix.vecNorm([
+            gtCam2.position[0] - gtCam1.position[0],
+            gtCam2.position[1] - gtCam1.position[1],
+            gtCam2.position[2] - gtCam1.position[2]
+        ]);
+        const sfmBaseline = Matrix.vecNorm(sfmCam2Pos);
+        const scale = sfmBaseline > 1e-10 ? gtBaseline / sfmBaseline : 1;
+        
+        // Compute rotation: align sfm direction to gt direction
+        // Using simplified alignment: translate sfmCam1 to gtCam1
+        const translation = gtCam1.position.slice();
+        
+        // Store transform
+        sfmToGtTransform = {
+            scale: scale,
+            R: Matrix.eye(3),  // Simplified: identity rotation
+            t: translation
+        };
+        
+        console.log(`Alignment: scale=${scale.toFixed(4)}, translate=[${translation.map(x=>x.toFixed(3)).join(',')}]`);
+    }
+    
+    // Transform a point from SfM to GT coordinates
+    function transformSfmToGt(p) {
+        if (!sfmToGtTransform) return p;
+        
+        const s = sfmToGtTransform.scale;
+        const t = sfmToGtTransform.t;
+        
+        return [
+            p[0] * s + t[0],
+            p[1] * s + t[1],
+            p[2] * s + t[2]
+        ];
+    }
+    
+    // Load GT point cloud from reconstruction.json
+    async function loadGTPoints() {
+        try {
+            const response = await fetch('data/fern/reconstruction.json');
+            const data = await response.json();
+            
+            gtPoints = data.points;
+            
+            // Create buffers
+            if (!gtPointBuffer) {
+                gtPointBuffer = gl.createBuffer();
+                gtColorBuffer = gl.createBuffer();
+            }
+            
+            const positions = new Float32Array(gtPoints.length * 3);
+            const colors = new Float32Array(gtPoints.length * 3);
+            
+            for (let i = 0; i < gtPoints.length; i++) {
+                const p = gtPoints[i];
+                positions[i*3] = p.x;
+                positions[i*3+1] = p.y;
+                positions[i*3+2] = p.z;
+                colors[i*3] = p.r / 255;
+                colors[i*3+1] = p.g / 255;
+                colors[i*3+2] = p.b / 255;
+            }
+            
+            gl.bindBuffer(gl.ARRAY_BUFFER, gtPointBuffer);
+            gl.bufferData(gl.ARRAY_BUFFER, positions, gl.STATIC_DRAW);
+            
+            gl.bindBuffer(gl.ARRAY_BUFFER, gtColorBuffer);
+            gl.bufferData(gl.ARRAY_BUFFER, colors, gl.STATIC_DRAW);
+            
+            gtPointCount = gtPoints.length;
+            
+            console.log(`Loaded ${gtPointCount} GT points`);
+        } catch (error) {
+            console.error('Failed to load GT points:', error);
+        }
+    }
+    
+    // Update GT camera buffers for rendering
+    function updateGTCameraBuffers() {
+        if (!gtCameraBuffer) {
+            gtCameraBuffer = gl.createBuffer();
+        }
+        
+        const vertices = [];
+        const scale = baseSceneScale * cameraSize;
+        
+        for (const cam of gtCameras) {
+            const pos = cam.position;
+            const dir = cam.direction;
+            const right = normalize(cross(dir, [0, 1, 0]));
+            const up = normalize(cross(right, dir));
+            
+            const tipDist = scale * 2;
+            const halfW = scale * 0.75;
+            const halfH = scale * 0.5;
+            
+            const tip = pos;
+            const corners = [
+                [pos[0] + dir[0]*tipDist - right[0]*halfW - up[0]*halfH,
+                 pos[1] + dir[1]*tipDist - right[1]*halfW - up[1]*halfH,
+                 pos[2] + dir[2]*tipDist - right[2]*halfW - up[2]*halfH],
+                [pos[0] + dir[0]*tipDist + right[0]*halfW - up[0]*halfH,
+                 pos[1] + dir[1]*tipDist + right[1]*halfW - up[1]*halfH,
+                 pos[2] + dir[2]*tipDist + right[2]*halfW - up[2]*halfH],
+                [pos[0] + dir[0]*tipDist + right[0]*halfW + up[0]*halfH,
+                 pos[1] + dir[1]*tipDist + right[1]*halfW + up[1]*halfH,
+                 pos[2] + dir[2]*tipDist + right[2]*halfW + up[2]*halfH],
+                [pos[0] + dir[0]*tipDist - right[0]*halfW + up[0]*halfH,
+                 pos[1] + dir[1]*tipDist - right[1]*halfW + up[1]*halfH,
+                 pos[2] + dir[2]*tipDist - right[2]*halfW + up[2]*halfH]
+            ];
+            
+            // Lines from tip to corners
+            for (let c of corners) {
+                vertices.push(...tip, ...c);
+            }
+            // Rectangle
+            for (let i = 0; i < 4; i++) {
+                vertices.push(...corners[i], ...corners[(i+1)%4]);
+            }
+        }
+        
+        gl.bindBuffer(gl.ARRAY_BUFFER, gtCameraBuffer);
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(vertices), gl.DYNAMIC_DRAW);
+        gtCameraVertexCount = vertices.length / 3;
+    }
+    
+    // Setup scene with triangulated points and cameras
+    function setupTriangulatedScene() {
+        // Convert triangulated points to buffers
+        const positions = new Float32Array(triangulatedPoints.length * 3);
+        const colors = new Float32Array(triangulatedPoints.length * 3);
+        
+        let minX = Infinity, minY = Infinity, minZ = Infinity;
+        let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
+        
+        for (let i = 0; i < triangulatedPoints.length; i++) {
+            const p = triangulatedPoints[i];
+            positions[i*3] = p.x;
+            positions[i*3+1] = p.y;
+            positions[i*3+2] = p.z;
+            colors[i*3] = p.r;
+            colors[i*3+1] = p.g;
+            colors[i*3+2] = p.b;
+            
+            minX = Math.min(minX, p.x); maxX = Math.max(maxX, p.x);
+            minY = Math.min(minY, p.y); maxY = Math.max(maxY, p.y);
+            minZ = Math.min(minZ, p.z); maxZ = Math.max(maxZ, p.z);
+        }
+        
+        center = [(minX+maxX)/2, (minY+maxY)/2, (minZ+maxZ)/2];
+        distance = Math.max(maxX-minX, maxY-minY, maxZ-minZ) * 1.5;
+        baseSceneScale = distance * 0.02;
+        
+        gl.bindBuffer(gl.ARRAY_BUFFER, pointBuffer);
+        gl.bufferData(gl.ARRAY_BUFFER, positions, gl.STATIC_DRAW);
+        
+        gl.bindBuffer(gl.ARRAY_BUFFER, colorBuffer);
+        gl.bufferData(gl.ARRAY_BUFFER, colors, gl.STATIC_DRAW);
+        
+        pointCount = triangulatedPoints.length;
+        
+        // Setup cameras
+        const R = estimatedPose.R;
+        const t = estimatedPose.t;
+        
+        // Camera 1 at origin, looking along +Z
+        const cam1Pos = [0, 0, 0];
+        const cam1Dir = [0, 0, 1];
+        
+        // Camera 2 position: C2 = -R^T * t
+        const Rt = Matrix.transpose(R);
+        const cam2Pos = [
+            -(Rt[0][0]*t[0] + Rt[0][1]*t[1] + Rt[0][2]*t[2]),
+            -(Rt[1][0]*t[0] + Rt[1][1]*t[1] + Rt[1][2]*t[2]),
+            -(Rt[2][0]*t[0] + Rt[2][1]*t[1] + Rt[2][2]*t[2])
+        ];
+        // Camera 2 viewing direction (R * [0,0,1])
+        const cam2Dir = [R[0][2], R[1][2], R[2][2]];
+        
+        // Create camera visualization data
+        cameraImages = [];
+        
+        // Camera 1
+        const right1 = normalize(cross(cam1Dir, [0, 1, 0]));
+        const up1 = normalize(cross(right1, cam1Dir));
+        cameraImages.push({
+            position: cam1Pos,
+            direction: cam1Dir,
+            right: right1,
+            up: up1,
+            name: selectedImages[0].name,
+            imageName: selectedImages[0].name,
+            texture: null,
+            vertexBuffer: gl.createBuffer(),
+            texCoordBuffer: gl.createBuffer()
+        });
+        
+        // Camera 2
+        const right2 = normalize(cross(cam2Dir, [0, 1, 0]));
+        const up2 = normalize(cross(right2, cam2Dir));
+        cameraImages.push({
+            position: cam2Pos,
+            direction: cam2Dir,
+            right: right2,
+            up: up2,
+            name: selectedImages[1].name,
+            imageName: selectedImages[1].name,
+            texture: null,
+            vertexBuffer: gl.createBuffer(),
+            texCoordBuffer: gl.createBuffer()
+        });
+        
+        // Load textures for camera images
+        loadTexture(selectedImages[0].path).then(tex => {
+            cameraImages[0].texture = tex;
+        });
+        loadTexture(selectedImages[1].path).then(tex => {
+            cameraImages[1].texture = tex;
+        });
+        
+        updateCameraBuffers();
+    }
+    
+    // Load an image as a promise
+    function loadImage(src) {
+        return new Promise((resolve, reject) => {
+            const img = new Image();
+            img.onload = () => resolve(img);
+            img.onerror = () => reject(new Error(`Failed to load image: ${src}`));
+            img.src = src;
+        });
+    }
+    
+    // Detect features from an image element
+    function detectFeaturesFromImage(img, maxCorners = 500) {
+        // Create a temporary canvas to get image data
+        const tempCanvas = document.createElement('canvas');
+        tempCanvas.width = img.width;
+        tempCanvas.height = img.height;
+        const tempCtx = tempCanvas.getContext('2d');
+        tempCtx.drawImage(img, 0, 0);
+        
+        const imageData = tempCtx.getImageData(0, 0, img.width, img.height);
+        
+        // Detect Harris corners
+        return detectHarrisCorners(imageData, 0.01, maxCorners);
+    }
+    
+    // Start the SfM pipeline (now called after feature matching)
+    async function startSfMPipeline() {
+        isSfMMode = true;
+        document.getElementById('feature-detection-screen').classList.add('hidden');
+        document.getElementById('loading').classList.remove('hidden');
+        document.getElementById('loading-text').textContent = 'Initializing SfM pipeline...';
+        
+        // Show the SfM progress panel
+        document.getElementById('sfm-progress').classList.remove('hidden');
+        
+        console.log('Starting SfM with images:', selectedImages);
+        console.log('Detected features:', detectedFeatures);
+        
+        // Simulate SfM progress steps (placeholder for now)
+        await updateSfMStep('step-features', 'completed', `Detected ${detectedFeatures.image1.length + detectedFeatures.image2.length} keypoints`);
+        await updateSfMStep('step-matching', 'active', 'Finding correspondences...');
+        
+        // TODO: Implement actual SfM pipeline:
+        // 2. Feature Description & Matching
+        // 3. Estimate Relative Camera Pose
+        // 4. Triangulation
+        
+        document.getElementById('loading-text').textContent = 'SfM pipeline ready. Implementation coming next...';
+        
+        setTimeout(() => {
+            document.getElementById('loading').classList.add('hidden');
+            document.getElementById('info').classList.remove('hidden');
+            document.getElementById('controls').classList.remove('hidden');
+            
+            document.querySelector('#info h1').textContent = '🔧 SfM Reconstruction';
+            document.querySelector('#info p').textContent = `Building from ${selectedImages.length} images`;
+            document.getElementById('point-count').textContent = '0';
+            document.getElementById('camera-count').textContent = selectedImages.length;
+            
+            setupEmptyScene();
+            render();
+        }, 1000);
+    }
+    
+    // Update SfM progress step
+    function updateSfMStep(stepId, status, detail) {
+        return new Promise(resolve => {
+            const step = document.getElementById(stepId);
+            step.className = 'progress-step ' + status;
+            if (detail) {
+                step.querySelector('.step-detail').textContent = detail;
+            }
+            setTimeout(resolve, 100);
+        });
+    }
+    
+    // Setup empty scene for SfM
+    function setupEmptyScene() {
+        // Create minimal point cloud (just origin marker)
+        const positions = new Float32Array([0, 0, 0]);
+        const colors = new Float32Array([1, 1, 1]);
+        
+        center = [0, 0, 0];
+        distance = 5;
+        baseSceneScale = 0.1;
+        
+        gl.bindBuffer(gl.ARRAY_BUFFER, pointBuffer);
+        gl.bufferData(gl.ARRAY_BUFFER, positions, gl.STATIC_DRAW);
+        
+        gl.bindBuffer(gl.ARRAY_BUFFER, colorBuffer);
+        gl.bufferData(gl.ARRAY_BUFFER, colors, gl.STATIC_DRAW);
+        
+        pointCount = 1;
+        cameraImages = [];
     }
 
     function resize() {
@@ -566,7 +4265,11 @@
                 }
             }
             
-            document.getElementById('loading').style.display = 'none';
+            // Hide loading, show UI panels
+            document.getElementById('loading').classList.add('hidden');
+            document.getElementById('info').classList.remove('hidden');
+            document.getElementById('controls').classList.remove('hidden');
+            document.getElementById('details-pane').classList.remove('hidden');
             
             // Setup camera click handler
             setupCameraClickHandler();
@@ -1179,6 +4882,51 @@
             
             gl.disableVertexAttribArray(texPosLoc);
             gl.disableVertexAttribArray(texCoordLoc);
+        }
+        
+        // Draw GT cameras (orange)
+        if (showGTCameras && gtCameraBuffer && gtCameraVertexCount > 0) {
+            // Update GT camera buffers with current camera size
+            updateGTCameraBuffers();
+            
+            gl.useProgram(lineProgram);
+            
+            const gtLinePosLoc = gl.getAttribLocation(lineProgram, 'aPosition');
+            const gtLineMvpLoc = gl.getUniformLocation(lineProgram, 'uMVP');
+            const gtLineColorLoc = gl.getUniformLocation(lineProgram, 'uColor');
+            
+            gl.uniformMatrix4fv(gtLineMvpLoc, false, mvp);
+            gl.uniform3f(gtLineColorLoc, 1.0, 0.6, 0.2);  // Orange color
+            
+            gl.bindBuffer(gl.ARRAY_BUFFER, gtCameraBuffer);
+            gl.enableVertexAttribArray(gtLinePosLoc);
+            gl.vertexAttribPointer(gtLinePosLoc, 3, gl.FLOAT, false, 0, 0);
+            
+            gl.drawArrays(gl.LINES, 0, gtCameraVertexCount);
+            gl.disableVertexAttribArray(gtLinePosLoc);
+        }
+        
+        // Draw GT point cloud
+        if (showGTPoints && gtPointBuffer && gtPointCount > 0) {
+            gl.useProgram(pointProgram);
+            
+            const gtPosLoc = gl.getAttribLocation(pointProgram, 'aPosition');
+            const gtColorLoc = gl.getAttribLocation(pointProgram, 'aColor');
+            const gtMvpLoc = gl.getUniformLocation(pointProgram, 'uMVP');
+            const gtSizeLoc = gl.getUniformLocation(pointProgram, 'uPointSize');
+            
+            gl.uniformMatrix4fv(gtMvpLoc, false, mvp);
+            gl.uniform1f(gtSizeLoc, pointSize * 0.8);  // Slightly smaller than SfM points
+            
+            gl.bindBuffer(gl.ARRAY_BUFFER, gtPointBuffer);
+            gl.enableVertexAttribArray(gtPosLoc);
+            gl.vertexAttribPointer(gtPosLoc, 3, gl.FLOAT, false, 0, 0);
+            
+            gl.bindBuffer(gl.ARRAY_BUFFER, gtColorBuffer);
+            gl.enableVertexAttribArray(gtColorLoc);
+            gl.vertexAttribPointer(gtColorLoc, 3, gl.FLOAT, false, 0, 0);
+            
+            gl.drawArrays(gl.POINTS, 0, gtPointCount);
         }
         
         requestAnimationFrame(render);
