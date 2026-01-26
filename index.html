@@ -4,747 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>3D Reconstruction Visualizer</title>
-    <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background: #1a1a2e;
-            color: #eee;
-            overflow: hidden;
-        }
-        canvas { display: block; }
-        #info {
-            position: absolute;
-            top: 20px;
-            left: 20px;
-            background: rgba(0, 0, 0, 0.7);
-            padding: 15px 20px;
-            border-radius: 10px;
-            max-width: 300px;
-            z-index: 100;
-        }
-        #info h1 { font-size: 1.2em; margin-bottom: 10px; color: #4fc3f7; }
-        #info p { font-size: 0.9em; line-height: 1.5; color: #bbb; }
-        #stats { margin-top: 10px; padding-top: 10px; border-top: 1px solid #444; }
-        #stats span { display: block; margin: 3px 0; }
-        #controls {
-            position: absolute;
-            bottom: 20px;
-            left: 20px;
-            background: rgba(0, 0, 0, 0.7);
-            padding: 15px 20px;
-            border-radius: 10px;
-            z-index: 100;
-        }
-        #controls label { display: block; margin: 8px 0; font-size: 0.9em; }
-        #controls input[type="range"] { width: 150px; margin-left: 10px; }
-        #controls input[type="checkbox"] { margin-right: 8px; }
-        #loading {
-            position: fixed;
-            top: 0; left: 0;
-            width: 100%; height: 100%;
-            background: #1a1a2e;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            z-index: 1000;
-            flex-direction: column;
-        }
-        .spinner {
-            width: 50px; height: 50px;
-            border: 4px solid #333;
-            border-top-color: #4fc3f7;
-            border-radius: 50%;
-            animation: spin 1s linear infinite;
-        }
-        @keyframes spin { to { transform: rotate(360deg); } }
-        #loading p { margin-top: 20px; color: #888; }
-        
-        /* Welcome Screen Styles */
-        #welcome-screen {
-            position: fixed;
-            top: 0; left: 0;
-            width: 100%; height: 100%;
-            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            z-index: 2000;
-            flex-direction: column;
-        }
-        #welcome-screen.hidden { display: none; }
-        .welcome-container {
-            text-align: center;
-            max-width: 800px;
-            padding: 40px;
-        }
-        .welcome-container h1 {
-            font-size: 2.5em;
-            margin-bottom: 15px;
-            color: #4fc3f7;
-        }
-        .welcome-container p {
-            font-size: 1.1em;
-            color: #aaa;
-            margin-bottom: 40px;
-            line-height: 1.6;
-        }
-        .action-buttons {
-            display: flex;
-            gap: 20px;
-            justify-content: center;
-            flex-wrap: wrap;
-        }
-        .action-btn {
-            padding: 20px 40px;
-            font-size: 1.1em;
-            border: none;
-            border-radius: 12px;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            gap: 10px;
-            min-width: 200px;
-        }
-        .action-btn.primary {
-            background: linear-gradient(135deg, #4fc3f7 0%, #29b6f6 100%);
-            color: #000;
-        }
-        .action-btn.secondary {
-            background: linear-gradient(135deg, #66bb6a 0%, #43a047 100%);
-            color: #fff;
-        }
-        .action-btn:hover {
-            transform: translateY(-3px);
-            box-shadow: 0 10px 30px rgba(79, 195, 247, 0.3);
-        }
-        .action-btn .icon { font-size: 2em; }
-        .action-btn .label { font-weight: 600; }
-        .action-btn .sublabel { font-size: 0.8em; opacity: 0.8; }
-        
-        /* Image Selection Screen */
-        #image-selection-screen {
-            position: fixed;
-            top: 0; left: 0;
-            width: 100%; height: 100%;
-            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
-            z-index: 2000;
-            overflow-y: auto;
-            padding: 40px;
-        }
-        #image-selection-screen.hidden { display: none; }
-        .selection-header {
-            text-align: center;
-            margin-bottom: 30px;
-        }
-        .selection-header h2 {
-            font-size: 1.8em;
-            color: #4fc3f7;
-            margin-bottom: 10px;
-        }
-        .selection-header p {
-            color: #888;
-            font-size: 1em;
-        }
-        .selection-status {
-            background: rgba(0, 0, 0, 0.4);
-            padding: 15px 25px;
-            border-radius: 10px;
-            margin-bottom: 20px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            flex-wrap: wrap;
-            gap: 15px;
-        }
-        .selection-status .status-text {
-            font-size: 1em;
-            color: #aaa;
-        }
-        .selection-status .status-text strong {
-            color: #4fc3f7;
-        }
-        .selection-actions {
-            display: flex;
-            gap: 10px;
-        }
-        .btn {
-            padding: 10px 20px;
-            border: none;
-            border-radius: 8px;
-            cursor: pointer;
-            font-size: 0.9em;
-            font-weight: 500;
-            transition: all 0.2s ease;
-        }
-        .btn-primary {
-            background: #4fc3f7;
-            color: #000;
-        }
-        .btn-primary:hover {
-            background: #29b6f6;
-        }
-        .btn-primary:disabled {
-            background: #444;
-            color: #888;
-            cursor: not-allowed;
-        }
-        .btn-secondary {
-            background: rgba(255, 255, 255, 0.1);
-            color: #fff;
-        }
-        .btn-secondary:hover {
-            background: rgba(255, 255, 255, 0.2);
-        }
-        .image-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-            gap: 20px;
-            max-width: 1200px;
-            margin: 0 auto;
-        }
-        .image-card {
-            background: rgba(0, 0, 0, 0.4);
-            border-radius: 12px;
-            overflow: hidden;
-            transition: all 0.3s ease;
-            cursor: pointer;
-            border: 3px solid transparent;
-        }
-        .image-card:hover {
-            transform: translateY(-5px);
-            border-color: rgba(79, 195, 247, 0.5);
-        }
-        .image-card.selected {
-            border-color: #4fc3f7;
-            box-shadow: 0 0 20px rgba(79, 195, 247, 0.4);
-        }
-        .image-card.selected .selection-badge {
-            display: flex;
-        }
-        .image-card img {
-            width: 100%;
-            height: 150px;
-            object-fit: cover;
-        }
-        .image-card .image-name {
-            padding: 10px;
-            font-size: 0.85em;
-            color: #aaa;
-            text-align: center;
-            background: rgba(0, 0, 0, 0.3);
-        }
-        .selection-badge {
-            position: absolute;
-            top: 10px;
-            right: 10px;
-            background: #4fc3f7;
-            color: #000;
-            width: 30px;
-            height: 30px;
-            border-radius: 50%;
-            display: none;
-            align-items: center;
-            justify-content: center;
-            font-weight: bold;
-            font-size: 0.9em;
-        }
-        .image-card-wrapper {
-            position: relative;
-        }
-        
-        /* SfM Progress Panel */
-        #sfm-progress {
-            position: fixed;
-            top: 20px;
-            right: 20px;
-            width: 350px;
-            max-height: calc(100vh - 40px);
-            background: rgba(0, 0, 0, 0.9);
-            padding: 20px;
-            border-radius: 12px;
-            z-index: 100;
-            overflow-y: auto;
-        }
-        #sfm-progress.hidden { display: none; }
-        #sfm-progress h3 {
-            color: #4fc3f7;
-            margin-bottom: 15px;
-            font-size: 1.1em;
-        }
-        .progress-step {
-            padding: 12px 15px;
-            margin: 8px 0;
-            background: rgba(255, 255, 255, 0.05);
-            border-radius: 8px;
-            display: flex;
-            align-items: center;
-            gap: 12px;
-        }
-        .progress-step.active {
-            background: rgba(79, 195, 247, 0.15);
-            border-left: 3px solid #4fc3f7;
-        }
-        .progress-step.completed {
-            background: rgba(102, 187, 106, 0.15);
-            border-left: 3px solid #66bb6a;
-        }
-        .progress-step .step-icon {
-            font-size: 1.2em;
-        }
-        .progress-step .step-content {
-            flex: 1;
-        }
-        .progress-step .step-title {
-            font-weight: 500;
-            margin-bottom: 3px;
-        }
-        .progress-step .step-detail {
-            font-size: 0.8em;
-            color: #888;
-        }
-        .progress-step.completed .step-detail {
-            color: #66bb6a;
-        }
-        
-        /* Utility */
-        .hidden { display: none !important; }
-        
-        /* Feature Detection Screen */
-        #feature-detection-screen {
-            position: fixed;
-            top: 0; left: 0;
-            width: 100%; height: 100%;
-            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
-            z-index: 2000;
-            overflow-y: auto;
-            padding: 40px;
-        }
-        .feature-display {
-            display: flex;
-            gap: 30px;
-            justify-content: center;
-            flex-wrap: wrap;
-            max-width: 1400px;
-            margin: 0 auto;
-        }
-        .feature-image-container {
-            background: rgba(0, 0, 0, 0.4);
-            border-radius: 12px;
-            padding: 20px;
-            flex: 1;
-            min-width: 400px;
-            max-width: 650px;
-        }
-        .feature-image-container h3 {
-            color: #4fc3f7;
-            margin-bottom: 15px;
-            font-size: 1em;
-        }
-        .feature-image-container h3 span {
-            color: #aaa;
-            font-weight: normal;
-        }
-        .feature-image-wrapper {
-            background: #000;
-            border-radius: 8px;
-            overflow: hidden;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }
-        .feature-image-wrapper canvas {
-            max-width: 100%;
-            height: auto;
-        }
-        .feature-count {
-            margin-top: 12px;
-            color: #888;
-            font-size: 0.9em;
-        }
-        .feature-count strong {
-            color: #66bb6a;
-        }
-        
-        /* Feature Controls */
-        .feature-controls {
-            display: flex;
-            gap: 30px;
-            justify-content: center;
-            align-items: center;
-            flex-wrap: wrap;
-            margin-top: 25px;
-            padding: 20px;
-            background: rgba(0, 0, 0, 0.4);
-            border-radius: 12px;
-            max-width: 1200px;
-            margin-left: auto;
-            margin-right: auto;
-        }
-        .feature-controls .control-group {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            gap: 8px;
-        }
-        .feature-controls label {
-            color: #aaa;
-            font-size: 0.9em;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            gap: 8px;
-        }
-        .feature-controls label strong {
-            color: #4fc3f7;
-            font-size: 1.1em;
-        }
-        .feature-controls input[type="range"] {
-            width: 180px;
-            cursor: pointer;
-        }
-        
-        /* Matching Screen */
-        #feature-matching-screen {
-            position: fixed;
-            top: 0; left: 0;
-            width: 100%; height: 100%;
-            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
-            z-index: 2000;
-            overflow-y: auto;
-            padding: 40px;
-        }
-        .matching-display {
-            max-width: 1400px;
-            margin: 0 auto;
-            background: rgba(0, 0, 0, 0.4);
-            border-radius: 12px;
-            padding: 20px;
-        }
-        .matching-image-wrapper {
-            background: #000;
-            border-radius: 8px;
-            overflow: hidden;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }
-        .matching-image-wrapper canvas {
-            max-width: 100%;
-            height: auto;
-        }
-        
-        /* Pose Estimation Screen */
-        #pose-estimation-screen {
-            position: fixed;
-            top: 0; left: 0;
-            width: 100%; height: 100%;
-            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
-            z-index: 2000;
-            overflow-y: auto;
-            padding: 40px;
-        }
-        .pose-display {
-            display: flex;
-            gap: 30px;
-            justify-content: center;
-            flex-wrap: wrap;
-            max-width: 1400px;
-            margin: 0 auto;
-        }
-        .pose-section {
-            background: rgba(0, 0, 0, 0.4);
-            border-radius: 12px;
-            padding: 20px;
-            flex: 1;
-            min-width: 400px;
-        }
-        .pose-section h3 {
-            color: #4fc3f7;
-            margin-bottom: 15px;
-            font-size: 1em;
-        }
-        .pose-info {
-            margin-top: 12px;
-            color: #888;
-            font-size: 0.9em;
-        }
-        .pose-details {
-            max-width: 450px;
-        }
-        .pose-matrices {
-            display: flex;
-            flex-direction: column;
-            gap: 15px;
-        }
-        .matrix-block {
-            background: rgba(0, 0, 0, 0.3);
-            padding: 12px;
-            border-radius: 8px;
-        }
-        .matrix-block h4 {
-            color: #81d4fa;
-            font-size: 0.9em;
-            margin-bottom: 8px;
-        }
-        .matrix-block pre {
-            font-family: 'Monaco', 'Consolas', monospace;
-            font-size: 0.85em;
-            color: #aaa;
-            margin: 0;
-            white-space: pre;
-            overflow-x: auto;
-        }
-        .pose-summary {
-            margin-top: 15px;
-            padding: 12px;
-            background: rgba(102, 187, 106, 0.1);
-            border-radius: 8px;
-            border-left: 3px solid #66bb6a;
-        }
-        .pose-summary p {
-            margin: 5px 0;
-            font-size: 0.9em;
-            color: #aaa;
-        }
-        .pose-summary strong {
-            color: #66bb6a;
-        }
-        
-        /* Debug Panel */
-        .debug-panel {
-            margin-top: 25px;
-            padding: 20px;
-            background: rgba(0, 0, 0, 0.6);
-            border-radius: 12px;
-            max-width: 1200px;
-            margin-left: auto;
-            margin-right: auto;
-            border: 1px solid #333;
-        }
-        .debug-panel h3 {
-            color: #ff9800;
-            margin-bottom: 15px;
-            font-size: 1em;
-        }
-        .debug-panel pre {
-            font-family: 'Monaco', 'Consolas', monospace;
-            font-size: 0.8em;
-            color: #aaa;
-            white-space: pre-wrap;
-            word-wrap: break-word;
-            max-height: 300px;
-            overflow-y: auto;
-            background: rgba(0, 0, 0, 0.3);
-            padding: 15px;
-            border-radius: 8px;
-        }
-        .debug-panel .debug-success { color: #66bb6a; }
-        .debug-panel .debug-error { color: #f44336; }
-        .debug-panel .debug-warning { color: #ff9800; }
-        .debug-panel .debug-info { color: #4fc3f7; }
-        
-        /* Triangulation Screen */
-        #triangulation-screen {
-            position: fixed;
-            top: 0; left: 0;
-            width: 100%; height: 100%;
-            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
-            z-index: 2000;
-            overflow-y: auto;
-            padding: 40px;
-        }
-        .triangulation-display {
-            display: flex;
-            gap: 30px;
-            justify-content: center;
-            flex-wrap: wrap;
-            max-width: 1400px;
-            margin: 0 auto 20px;
-        }
-        .triangulation-section {
-            background: rgba(0, 0, 0, 0.4);
-            border-radius: 12px;
-            padding: 20px;
-            flex: 1;
-            min-width: 400px;
-        }
-        .triangulation-section h3 {
-            color: #4fc3f7;
-            margin-bottom: 15px;
-            font-size: 1em;
-        }
-        .preview-wrapper, .camera-viz {
-            background: #000;
-            border-radius: 8px;
-            overflow: hidden;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            min-height: 300px;
-        }
-        .preview-wrapper canvas, .camera-viz canvas {
-            max-width: 100%;
-        }
-        .triangulation-info, .camera-stats {
-            margin-top: 12px;
-            color: #888;
-            font-size: 0.9em;
-        }
-        .triangulation-info p, .camera-stats p {
-            margin: 5px 0;
-        }
-        .triangulation-info strong, .camera-stats span {
-            color: #66bb6a;
-        }
-        
-        /* Point Statistics Panel */
-        .point-stats-panel {
-            background: rgba(0, 0, 0, 0.4);
-            border-radius: 12px;
-            padding: 20px;
-            max-width: 1200px;
-            margin: 0 auto 20px;
-        }
-        .point-stats-panel h3 {
-            color: #4fc3f7;
-            margin-bottom: 15px;
-            font-size: 1em;
-        }
-        .stats-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-            gap: 15px;
-        }
-        .stat-item {
-            background: rgba(0, 0, 0, 0.3);
-            padding: 15px;
-            border-radius: 8px;
-            text-align: center;
-        }
-        .stat-label {
-            display: block;
-            color: #888;
-            font-size: 0.85em;
-            margin-bottom: 8px;
-        }
-        .stat-value {
-            display: block;
-            color: #4fc3f7;
-            font-size: 1.4em;
-            font-weight: bold;
-        }
-        
-        /* Reprojection Panel */
-        .reprojection-panel {
-            background: rgba(0, 0, 0, 0.4);
-            border-radius: 12px;
-            padding: 20px;
-            max-width: 1400px;
-            margin: 0 auto 20px;
-        }
-        .reprojection-panel h3 {
-            color: #4fc3f7;
-            margin-bottom: 10px;
-            font-size: 1em;
-        }
-        .reprojection-panel .panel-description {
-            color: #888;
-            font-size: 0.85em;
-            margin-bottom: 15px;
-        }
-        .reprojection-display {
-            display: flex;
-            gap: 20px;
-            justify-content: center;
-            flex-wrap: wrap;
-        }
-        .reproj-image-container {
-            flex: 1;
-            min-width: 300px;
-            max-width: 600px;
-        }
-        .reproj-image-container h4 {
-            color: #81d4fa;
-            font-size: 0.9em;
-            margin-bottom: 10px;
-        }
-        .reproj-image-container canvas {
-            width: 100%;
-            border-radius: 8px;
-            background: #000;
-        }
-        
-        /* Details pane on the right */
-        #details-pane {
-            position: absolute;
-            top: 20px;
-            right: 20px;
-            width: 320px;
-            max-height: calc(100vh - 40px);
-            background: rgba(0, 0, 0, 0.85);
-            padding: 20px;
-            border-radius: 10px;
-            z-index: 100;
-            overflow-y: auto;
-            font-size: 0.9em;
-        }
-        #details-pane h2 {
-            font-size: 1.1em;
-            margin-bottom: 15px;
-            color: #4fc3f7;
-            border-bottom: 1px solid #444;
-            padding-bottom: 10px;
-        }
-        #details-pane .detail-row {
-            display: flex;
-            margin: 8px 0;
-            line-height: 1.4;
-        }
-        #details-pane .detail-label {
-            color: #888;
-            min-width: 100px;
-            flex-shrink: 0;
-        }
-        #details-pane .detail-value {
-            color: #eee;
-            word-break: break-all;
-        }
-        #details-pane .detail-section {
-            margin-top: 15px;
-            padding-top: 15px;
-            border-top: 1px solid #333;
-        }
-        #details-pane .detail-section h3 {
-            font-size: 0.95em;
-            color: #81d4fa;
-            margin-bottom: 10px;
-        }
-        #details-pane .camera-thumbnail {
-            width: 100%;
-            max-height: 180px;
-            object-fit: contain;
-            border-radius: 5px;
-            margin-top: 10px;
-            border: 1px solid #444;
-        }
-        #details-pane .matrix-display {
-            font-family: monospace;
-            font-size: 0.8em;
-            background: rgba(255,255,255,0.05);
-            padding: 8px;
-            border-radius: 4px;
-            margin-top: 5px;
-        }
-        #details-pane .hint {
-            color: #666;
-            font-size: 0.85em;
-            font-style: italic;
-            margin-top: 15px;
-        }
-    </style>
+    <link rel="stylesheet" href="css/main.css">
 </head>
 <body>
     <!-- Welcome Screen -->
@@ -1242,7 +502,11 @@
         </button>
     </div>
 
-    <script>
+    <script type="module">
+import { mat4, sub, dot, cross, normalize, length } from './js/utils.js';
+import { initUIEvents } from './js/ui.js';
+
+// ============== WebGL Point Cloud Viewer (No Dependencies) ==============
     // ============== WebGL Point Cloud Viewer (No Dependencies) ==============
     
     const canvas = document.getElementById('canvas');
@@ -1343,53 +607,7 @@
         return program;
     }
 
-    // Matrix math
-    const mat4 = {
-        create: () => new Float32Array([1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1]),
-        perspective: (fovy, aspect, near, far) => {
-            const f = 1.0 / Math.tan(fovy / 2);
-            const nf = 1 / (near - far);
-            return new Float32Array([
-                f/aspect, 0, 0, 0,
-                0, f, 0, 0,
-                0, 0, (far+near)*nf, -1,
-                0, 0, 2*far*near*nf, 0
-            ]);
-        },
-        lookAt: (eye, center, up) => {
-            const z = normalize(sub(eye, center));
-            const x = normalize(cross(up, z));
-            const y = cross(z, x);
-            return new Float32Array([
-                x[0], y[0], z[0], 0,
-                x[1], y[1], z[1], 0,
-                x[2], y[2], z[2], 0,
-                -dot(x, eye), -dot(y, eye), -dot(z, eye), 1
-            ]);
-        },
-        multiply: (a, b) => {
-            const out = new Float32Array(16);
-            for (let i = 0; i < 4; i++) {
-                for (let j = 0; j < 4; j++) {
-                    out[i*4+j] = a[j]*b[i*4] + a[4+j]*b[i*4+1] + a[8+j]*b[i*4+2] + a[12+j]*b[i*4+3];
-                }
-            }
-            return out;
-        },
-        translate: (m, v) => {
-            const out = new Float32Array(m);
-            out[12] = m[0]*v[0] + m[4]*v[1] + m[8]*v[2] + m[12];
-            out[13] = m[1]*v[0] + m[5]*v[1] + m[9]*v[2] + m[13];
-            out[14] = m[2]*v[0] + m[6]*v[1] + m[10]*v[2] + m[14];
-            return out;
-        }
-    };
 
-    function sub(a, b) { return [a[0]-b[0], a[1]-b[1], a[2]-b[2]]; }
-    function dot(a, b) { return a[0]*b[0] + a[1]*b[1] + a[2]*b[2]; }
-    function cross(a, b) { return [a[1]*b[2]-a[2]*b[1], a[2]*b[0]-a[0]*b[2], a[0]*b[1]-a[1]*b[0]]; }
-    function normalize(v) { const l = Math.sqrt(dot(v, v)); return l > 0 ? [v[0]/l, v[1]/l, v[2]/l] : [0,0,0]; }
-    function length(v) { return Math.sqrt(dot(v, v)); }
 
     // State
     let pointProgram, lineProgram, textureProgram;
@@ -1432,14 +650,14 @@
     };
 
     // SfM state
-    let selectedImages = [];
+
     let availableImages = [];
     let isSfMMode = false;
     let detectedFeatures = { image1: [], image2: [] };
     let featureDescriptors = { image1: { descriptors: [], keypoints: [] }, image2: { descriptors: [], keypoints: [] } };
     let featureMatches = [];
     let loadedImages = { img1: null, img2: null };
-    
+
     // Feature detection parameters
     let maxDetectFeatures = 500;
     let maxDisplayFeatures = 500;
@@ -2746,31 +1964,7 @@
             }
         });
         
-        // Welcome screen buttons
-        document.getElementById('btn-load-reconstruction').addEventListener('click', () => {
-            document.getElementById('welcome-screen').classList.add('hidden');
-            document.getElementById('loading').classList.remove('hidden');
-            loadData();
-        });
-        
-        document.getElementById('btn-create-sfm').addEventListener('click', () => {
-            document.getElementById('welcome-screen').classList.add('hidden');
-            showImageSelectionScreen();
-        });
-        
-        // Image selection screen buttons
-        document.getElementById('btn-back-to-welcome').addEventListener('click', () => {
-            document.getElementById('image-selection-screen').classList.add('hidden');
-            document.getElementById('welcome-screen').classList.remove('hidden');
-            selectedImages = [];
-            updateSelectionStatus();
-        });
-        
-        document.getElementById('btn-detect-features').addEventListener('click', () => {
-            if (selectedImages.length === 2) {
-                showFeatureDetectionScreen();
-            }
-        });
+        // UI event listeners are now handled by ui.js module
         
         document.getElementById('btn-back-to-images').addEventListener('click', () => {
             document.getElementById('feature-detection-screen').classList.add('hidden');
@@ -2916,131 +2110,33 @@
             }
         });
     }
-    
-    // Show image selection screen and load available images
-    async function showImageSelectionScreen() {
-        document.getElementById('image-selection-screen').classList.remove('hidden');
-        
-        try {
-            const response = await fetch('/api/images');
-            const data = await response.json();
-            availableImages = data.images;
-            
-            const grid = document.getElementById('image-grid');
-            grid.innerHTML = '';
-            
-            availableImages.forEach((img, index) => {
-                const card = document.createElement('div');
-                card.className = 'image-card-wrapper';
-                card.innerHTML = `
-                    <div class="image-card" data-index="${index}" data-name="${img.name}">
-                        <img src="${img.path}" alt="${img.name}">
-                        <div class="image-name">${img.name}</div>
-                        <div class="selection-badge"></div>
-                    </div>
-                `;
-                grid.appendChild(card);
-                
-                card.querySelector('.image-card').addEventListener('click', () => {
-                    toggleImageSelection(index, img.name, card.querySelector('.image-card'));
-                });
-            });
-        } catch (error) {
-            console.error('Failed to load images:', error);
-        }
-    }
-    
-    // Toggle image selection
-    function toggleImageSelection(index, name, cardElement) {
-        const existingIndex = selectedImages.findIndex(img => img.index === index);
-        
-        if (existingIndex !== -1) {
-            // Deselect
-            selectedImages.splice(existingIndex, 1);
-            cardElement.classList.remove('selected');
-        } else if (selectedImages.length < 2) {
-            // Select
-            selectedImages.push({ index, name, path: availableImages[index].path });
-            cardElement.classList.add('selected');
-        }
-        
-        updateSelectionStatus();
-    }
-    
-    // Update selection status display
-    function updateSelectionStatus() {
-        document.getElementById('selected-count').textContent = selectedImages.length;
-        
-        const namesSpan = document.getElementById('selected-names');
-        if (selectedImages.length > 0) {
-            namesSpan.textContent = ` (${selectedImages.map(img => img.name).join(', ')})`;
-        } else {
-            namesSpan.textContent = '';
-        }
-        
-        // Update selection badges
-        document.querySelectorAll('.image-card').forEach(card => {
-            const badge = card.querySelector('.selection-badge');
-            const cardIndex = parseInt(card.dataset.index);
-            const selOrder = selectedImages.findIndex(img => img.index === cardIndex);
-            if (selOrder !== -1) {
-                badge.textContent = selOrder + 1;
-                badge.style.display = 'flex';
-            } else {
-                badge.style.display = 'none';
-            }
-        });
-        
-        // Enable/disable detect features button
-        document.getElementById('btn-detect-features').disabled = selectedImages.length !== 2;
-    }
-    
-    // Show feature detection screen and run Harris corner detection
-    async function showFeatureDetectionScreen() {
-        document.getElementById('image-selection-screen').classList.add('hidden');
-        document.getElementById('feature-detection-screen').classList.remove('hidden');
-        
-        // Update image names in headers
-        document.getElementById('feature-img1-name').textContent = selectedImages[0].name;
-        document.getElementById('feature-img2-name').textContent = selectedImages[1].name;
-        document.getElementById('feature-stats').textContent = 'Detecting features...';
-        
-        // Reset sliders to current values
-        document.getElementById('max-detect-slider').value = maxDetectFeatures;
-        document.getElementById('max-detect-value').textContent = maxDetectFeatures;
-        document.getElementById('max-display-slider').value = maxDisplayFeatures;
-        document.getElementById('max-display-value').textContent = maxDisplayFeatures;
-        
-        // Get canvases
-        const canvas1 = document.getElementById('feature-canvas-1');
-        const canvas2 = document.getElementById('feature-canvas-2');
-        
-        try {
-            // Load images and detect features
-            document.getElementById('feature-stats').textContent = 'Loading images...';
-            await new Promise(resolve => setTimeout(resolve, 50));
-            
-            loadedImages.img1 = await loadImage(selectedImages[0].path);
-            loadedImages.img2 = await loadImage(selectedImages[1].path);
-            
-            // Detect features
-            await detectAndDisplayFeatures();
-            
-        } catch (error) {
-            console.error('Error detecting features:', error);
-            document.getElementById('feature-stats').textContent = 'Error detecting features: ' + error.message;
-        }
-    }
+
+
+
+
     
     // Detect and display features (used by initial detection and re-detection)
     async function detectAndDisplayFeatures() {
+        console.log('detectAndDisplayFeatures called');
+        console.log('selectedImages:', window.selectedImages);
         const canvas1 = document.getElementById('feature-canvas-1');
         const canvas2 = document.getElementById('feature-canvas-2');
-        
+
+        // Load images
+        document.getElementById('feature-stats').textContent = 'Loading images...';
+        await new Promise(resolve => setTimeout(resolve, 50));
+
+        console.log('Loading img1 from:', window.selectedImages[0].path);
+        loadedImages.img1 = await loadImage(window.selectedImages[0].path);
+        console.log('Loading img2 from:', window.selectedImages[1].path);
+        loadedImages.img2 = await loadImage(window.selectedImages[1].path);
+        console.log('loadedImages.img1:', loadedImages.img1);
+        console.log('loadedImages.img2:', loadedImages.img2);
+
         // Detect features for image 1
         document.getElementById('feature-stats').textContent = 'Detecting features in image 1...';
         await new Promise(resolve => setTimeout(resolve, 50));
-        
+
         let corners1 = detectFeaturesFromImage(loadedImages.img1, maxDetectFeatures);
         detectedFeatures.image1 = corners1;
         const displayed1 = drawFeatures(canvas1, loadedImages.img1, corners1, maxDisplayFeatures);
@@ -3084,7 +2180,8 @@
         
         await computeAndDisplayMatches();
     }
-    
+    window.detectAndDisplayFeatures = detectAndDisplayFeatures;
+
     // Compute and display feature matches
     async function computeAndDisplayMatches() {
         document.getElementById('matching-stats').textContent = 'Computing descriptors...';
@@ -3144,7 +2241,8 @@
             document.getElementById('matching-stats').textContent = 'Error matching features: ' + error.message;
         }
     }
-    
+    window.computeAndDisplayMatches = computeAndDisplayMatches;
+
     // Re-match features with new parameters
     async function rematchFeatures() {
         if (featureDescriptors.image1.descriptors.length === 0) return;
@@ -3336,7 +2434,8 @@
         // Final debug panel update
         updateDebugPanel();
     }
-    
+    window.estimatePose = estimatePose;
+
     // Re-estimate pose with new parameters
     async function reestimatePose() {
         await estimatePose();
@@ -3843,7 +2942,8 @@
         ctx.lineTo(x - size, y + size);
         ctx.stroke();
     }
-    
+    window.triangulatePoints = triangulatePoints;
+
     // Load GT cameras from reconstruction.json
     async function loadGTCameras() {
         try {
@@ -3886,8 +2986,8 @@
         const sfmCam2 = { pos: sfmCam2Pos, dir: [R[0][2], R[1][2], R[2][2]] };
         
         // Find matching GT cameras by image name
-        const imgIdx1 = parseInt(selectedImages[0].name.match(/\d+/)[0]);
-        const imgIdx2 = parseInt(selectedImages[1].name.match(/\d+/)[0]);
+        const imgIdx1 = parseInt(window.selectedImages[0].name.match(/\d+/)[0]);
+        const imgIdx2 = parseInt(window.selectedImages[1].name.match(/\d+/)[0]);
         
         // GT cameras are sorted, find by index
         let gtCam1 = null, gtCam2 = null;
@@ -4095,8 +3195,8 @@
             direction: cam1Dir,
             right: right1,
             up: up1,
-            name: selectedImages[0].name,
-            imageName: selectedImages[0].name,
+            name: window.selectedImages[0].name,
+            imageName: window.selectedImages[0].name,
             texture: null,
             vertexBuffer: gl.createBuffer(),
             texCoordBuffer: gl.createBuffer()
@@ -4110,18 +3210,18 @@
             direction: cam2Dir,
             right: right2,
             up: up2,
-            name: selectedImages[1].name,
-            imageName: selectedImages[1].name,
+            name: window.selectedImages[1].name,
+            imageName: window.selectedImages[1].name,
             texture: null,
             vertexBuffer: gl.createBuffer(),
             texCoordBuffer: gl.createBuffer()
         });
         
         // Load textures for camera images
-        loadTexture(selectedImages[0].path).then(tex => {
+        loadTexture(window.selectedImages[0].path).then(tex => {
             cameraImages[0].texture = tex;
         });
-        loadTexture(selectedImages[1].path).then(tex => {
+        loadTexture(window.selectedImages[1].path).then(tex => {
             cameraImages[1].texture = tex;
         });
         
@@ -4130,10 +3230,18 @@
     
     // Load an image as a promise
     function loadImage(src) {
+        console.log('loadImage called with src:', src);
         return new Promise((resolve, reject) => {
             const img = new Image();
-            img.onload = () => resolve(img);
-            img.onerror = () => reject(new Error(`Failed to load image: ${src}`));
+            img.crossOrigin = 'anonymous';
+            img.onload = () => {
+                console.log('Image loaded successfully:', img.width, 'x', img.height);
+                resolve(img);
+            };
+            img.onerror = (e) => {
+                console.error('Image failed to load:', src, e);
+                reject(new Error(`Failed to load image: ${src}`));
+            };
             img.src = src;
         });
     }
@@ -4163,7 +3271,7 @@
         // Show the SfM progress panel
         document.getElementById('sfm-progress').classList.remove('hidden');
         
-        console.log('Starting SfM with images:', selectedImages);
+        console.log('Starting SfM with images:', window.selectedImages);
         console.log('Detected features:', detectedFeatures);
         
         // Simulate SfM progress steps (placeholder for now)
@@ -4183,9 +3291,9 @@
             document.getElementById('controls').classList.remove('hidden');
             
             document.querySelector('#info h1').textContent = '🔧 SfM Reconstruction';
-            document.querySelector('#info p').textContent = `Building from ${selectedImages.length} images`;
+            document.querySelector('#info p').textContent = `Building from ${window.selectedImages.length} images`;
             document.getElementById('point-count').textContent = '0';
-            document.getElementById('camera-count').textContent = selectedImages.length;
+            document.getElementById('camera-count').textContent = window.selectedImages.length;
             
             setupEmptyScene();
             render();
@@ -4932,6 +4040,7 @@
         requestAnimationFrame(render);
     }
 
+    initUIEvents();
     init();
     </script>
 </body>

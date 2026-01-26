@@ -34,7 +34,7 @@ class SfMRequestHandler(http.server.SimpleHTTPRequestHandler):
             for img_path in sorted(images_dir.glob('*.png')):
                 images.append({
                     'name': img_path.name,
-                    'path': f'data/fern/images_8/{img_path.name}'
+                    'path': f'/data/fern/images_8/{img_path.name}'
                 })
         return {'images': images}
     
