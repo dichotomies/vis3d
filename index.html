@@ -532,6 +532,7 @@
     <script type="module">
 import { mat4, sub, dot, cross, normalize, length } from './js/utils.js';
 import { initUIEvents } from './js/ui.js';
+import { renderState, sfmState, uiState } from './js/state.js';
 
 // ============== WebGL Point Cloud Viewer (No Dependencies) ==============
     // ============== WebGL Point Cloud Viewer (No Dependencies) ==============
@@ -636,88 +637,7 @@ import { initUIEvents } from './js/ui.js';
 
 
 
-    // State
-    let pointProgram, lineProgram, textureProgram;
-    let pointBuffer, colorBuffer, cameraBuffer;
-    let pointCount = 0, cameraVertexCount = 0;
-    let center = [0, 0, 0];
-    let distance = 5;
-    let rotationX = 0.3, rotationY = 0;
-    let pointSize = 3;
-    let showCameras = true;
-    let autoRotate = false;  // Default: off
-    let freeRotation = true; // Default: on
-    let cameraSize = 1.0;    // Camera size multiplier
-    
-    // For trackball rotation (free rotation mode)
-    let rotationMatrix = mat4.create();
-    
-    // Camera position for WASD navigation
-    let cameraPos = [0, 0, 0];
-    let moveSpeed = 0.15;  // Default slower speed
-
-    // Mouse state
-    let isDragging = false;
-    let lastMouse = [0, 0];
-    
-    // Keyboard state
-    const keys = { w: false, a: false, s: false, d: false };
-    
-    // Camera image data
-    let cameraImages = [];  // Array of {texture, position, direction, right, up, vertices, texCoords}
-    let baseSceneScale = 1; // Will be set based on point cloud size
-    let cameraIntrinsics = {}; // Camera intrinsics from COLMAP
-    let selectedCamera = null; // Currently selected camera for details view
-    
-    // Camera model names
-    const CAMERA_MODELS = {
-        0: 'SIMPLE_PINHOLE', 1: 'PINHOLE', 2: 'SIMPLE_RADIAL', 3: 'RADIAL',
-        4: 'OPENCV', 5: 'OPENCV_FISHEYE', 6: 'FULL_OPENCV', 7: 'FOV',
-        8: 'SIMPLE_RADIAL_FISHEYE', 9: 'RADIAL_FISHEYE', 10: 'THIN_PRISM_FISHEYE'
-    };
-
-    // SfM state
-
-    let availableImages = [];
-    let isSfMMode = false;
-    let detectedFeatures = { image1: [], image2: [] };
-    let featureDescriptors = { image1: { descriptors: [], keypoints: [] }, image2: { descriptors: [], keypoints: [] } };
-    let featureMatches = [];
-    let loadedImages = { img1: null, img2: null };
-
-    // Feature detection parameters
-    let maxDetectFeatures = 500;
-    let maxDisplayFeatures = 500;
-    let ratioThreshold = 0.75;
-    let maxMatchesDisplay = 100;
-    
-    // Pose estimation parameters and results
-    let ransacIterations = 1000;
-    let inlierThreshold = 3.0;
-    let estimatedPose = null;  // { R, t, inliers, E }
-    let cameraIntrinsicsK = null;  // 3x3 intrinsic matrix
-    let useIntrinsics = true;
-    let debugLog = [];
-    
-    // Triangulation parameters and results
-    let maxReprojError = 4.0;
-    let minTriangleAngle = 2.0;
-    let triangulatedPoints = [];  // Array of {x, y, z, color, reprojError}
-    let triangulatedPointsWithReproj = [];  // Points with reprojection data
-    
-    // GT cameras and points
-    let gtCameras = [];
-    let gtCameraBuffer = null;
-    let gtCameraVertexCount = 0;
-    let showGTCameras = false;
-    let sfmToGtTransform = null;  // Alignment transform
-    
-    // GT point cloud
-    let gtPoints = [];
-    let gtPointBuffer = null;
-    let gtColorBuffer = null;
-    let gtPointCount = 0;
-    let showGTPoints = false;
+    // State is now centralized in state.js module
     
     // ============== Harris Corner Detection ==============
     
@@ -875,7 +795,7 @@ import { initUIEvents } from './js/ui.js';
             ctx.stroke();
         }
         
-        // Draw small dot at center of each corner
+        // Draw small dot at renderState.center of each corner
         ctx.fillStyle = '#00ff00';
         for (const corner of cornersToShow) {
             ctx.beginPath();
@@ -948,7 +868,7 @@ import { initUIEvents } from './js/ui.js';
         return { descriptors, keypoints: validKeypoints };
     }
     
-    // Compute distance between two descriptors (SSD)
+    // Compute renderState.distance between two descriptors (SSD)
     function descriptorDistance(d1, d2) {
         let sum = 0;
         for (let i = 0; i < d1.length; i++) {
@@ -979,7 +899,7 @@ import { initUIEvents } from './js/ui.js';
             }
             
             // Apply ratio test
-            if (bestIdx !== -1 && bestDist < ratioThreshold * secondBestDist) {
+            if (bestIdx !== -1 && bestDist < sfmState.ratioThreshold * secondBestDist) {
                 matches.push({
                     queryIdx: i,
                     trainIdx: bestIdx,
@@ -988,7 +908,7 @@ import { initUIEvents } from './js/ui.js';
             }
         }
         
-        // Sort by distance
+        // Sort by renderState.distance
         matches.sort((a, b) => a.distance - b.distance);
         
         return matches;
@@ -1380,14 +1300,14 @@ import { initUIEvents } from './js/ui.js';
         cx /= points.length;
         cy /= points.length;
         
-        // Compute average distance from centroid
+        // Compute average renderState.distance from centroid
         let avgDist = 0;
         for (const p of points) {
             avgDist += Math.sqrt((p.x - cx) ** 2 + (p.y - cy) ** 2);
         }
         avgDist /= points.length;
         
-        // Scale so average distance is sqrt(2)
+        // Scale so average renderState.distance is sqrt(2)
         const scale = Math.sqrt(2) / (avgDist + 1e-10);
         
         // Normalization matrix
@@ -1764,7 +1684,7 @@ import { initUIEvents } from './js/ui.js';
             
             successfulIterations++;
             
-            // Count inliers using symmetric epipolar distance
+            // Count inliers using symmetric epipolar renderState.distance
             const inliers = [];
             for (let i = 0; i < n; i++) {
                 const error = sampsonError(E, pts1[i], pts2[i], K);
@@ -1897,12 +1817,12 @@ import { initUIEvents } from './js/ui.js';
     
     // Debug logging functions
     function debugClear() {
-        debugLog = [];
+        sfmState.debugLog = [];
     }
     
     function debug(message, type = 'info') {
         const timestamp = new Date().toLocaleTimeString();
-        debugLog.push({ message, type, timestamp });
+        sfmState.debugLog.push({ message, type, timestamp });
         console.log(`[${type.toUpperCase()}] ${message}`);
     }
     
@@ -1912,7 +1832,7 @@ import { initUIEvents } from './js/ui.js';
     function debugInfo(msg) { debug(msg, 'info'); }
     
     function updateDebugPanel() {
-        const output = debugLog.map(entry => {
+        const output = sfmState.debugLog.map(entry => {
             const cls = `debug-${entry.type}`;
             return `<span class="${cls}">[${entry.timestamp}] ${entry.message}</span>`;
         }).join('\n');
@@ -1921,13 +1841,13 @@ import { initUIEvents } from './js/ui.js';
     
     // Initialize
     function init() {
-        pointProgram = createProgram(pointVertexShader, pointFragmentShader);
-        lineProgram = createProgram(lineVertexShader, lineFragmentShader);
-        textureProgram = createProgram(textureVertexShader, textureFragmentShader);
+        renderState.pointProgram = createProgram(pointVertexShader, pointFragmentShader);
+        renderState.lineProgram = createProgram(lineVertexShader, lineFragmentShader);
+        renderState.textureProgram = createProgram(textureVertexShader, textureFragmentShader);
         
-        pointBuffer = gl.createBuffer();
-        colorBuffer = gl.createBuffer();
-        cameraBuffer = gl.createBuffer();
+        renderState.pointBuffer = gl.createBuffer();
+        renderState.colorBuffer = gl.createBuffer();
+        renderState.cameraBuffer = gl.createBuffer();
         
         gl.enable(gl.DEPTH_TEST);
         gl.enable(gl.BLEND);
@@ -1951,42 +1871,42 @@ import { initUIEvents } from './js/ui.js';
         
         // UI controls
         document.getElementById('point-size').addEventListener('input', (e) => {
-            pointSize = parseFloat(e.target.value);
+            renderState.pointSize = parseFloat(e.target.value);
         });
         document.getElementById('show-cameras').addEventListener('change', (e) => {
-            showCameras = e.target.checked;
+            renderState.showCameras = e.target.checked;
         });
         document.getElementById('camera-size').addEventListener('input', (e) => {
-            cameraSize = parseFloat(e.target.value);
+            renderState.cameraSize = parseFloat(e.target.value);
         });
         document.getElementById('auto-rotate').addEventListener('change', (e) => {
-            autoRotate = e.target.checked;
+            renderState.autoRotate = e.target.checked;
         });
         document.getElementById('free-rotation').addEventListener('change', (e) => {
-            freeRotation = e.target.checked;
-            if (!freeRotation) {
+            renderState.freeRotation = e.target.checked;
+            if (!renderState.freeRotation) {
                 // Reset to default orientation when switching back
-                rotationMatrix = mat4.create();
-                rotationX = 0.3;
-                rotationY = 0;
+                renderState.rotationMatrix = mat4.create();
+                renderState.rotationX = 0.3;
+                renderState.rotationY = 0;
             }
         });
         document.getElementById('move-speed').addEventListener('input', (e) => {
-            moveSpeed = parseFloat(e.target.value);
+            renderState.moveSpeed = parseFloat(e.target.value);
         });
         
         // Keyboard controls for WASD navigation
         window.addEventListener('keydown', (e) => {
             const key = e.key.toLowerCase();
-            if (key in keys) {
-                keys[key] = true;
+            if (key in renderState.keys) {
+                renderState.keys[key] = true;
                 e.preventDefault();
             }
         });
         window.addEventListener('keyup', (e) => {
             const key = e.key.toLowerCase();
-            if (key in keys) {
-                keys[key] = false;
+            if (key in renderState.keys) {
+                renderState.keys[key] = false;
                 e.preventDefault();
             }
         });
@@ -1997,9 +1917,9 @@ import { initUIEvents } from './js/ui.js';
             document.getElementById('feature-detection-screen').classList.add('hidden');
             document.getElementById('image-selection-screen').classList.remove('hidden');
             // Clear detected features
-            detectedFeatures = { image1: [], image2: [] };
-            featureDescriptors = { image1: { descriptors: [], keypoints: [] }, image2: { descriptors: [], keypoints: [] } };
-            loadedImages = { img1: null, img2: null };
+            sfmState.detectedFeatures = { image1: [], image2: [] };
+            sfmState.featureDescriptors = { image1: { descriptors: [], keypoints: [] }, image2: { descriptors: [], keypoints: [] } };
+            sfmState.loadedImages = { img1: null, img2: null };
         });
         
         document.getElementById('btn-match-features').addEventListener('click', () => {
@@ -2008,19 +1928,19 @@ import { initUIEvents } from './js/ui.js';
         
         // Feature detection controls
         document.getElementById('max-detect-slider').addEventListener('input', (e) => {
-            maxDetectFeatures = parseInt(e.target.value);
-            document.getElementById('max-detect-value').textContent = maxDetectFeatures;
+            sfmState.maxDetectFeatures = parseInt(e.target.value);
+            document.getElementById('max-detect-value').textContent = sfmState.maxDetectFeatures;
         });
         
         document.getElementById('max-display-slider').addEventListener('input', (e) => {
-            maxDisplayFeatures = parseInt(e.target.value);
-            document.getElementById('max-display-value').textContent = maxDisplayFeatures;
+            sfmState.maxDisplayFeatures = parseInt(e.target.value);
+            document.getElementById('max-display-value').textContent = sfmState.maxDisplayFeatures;
             // Redraw with new display limit
-            if (loadedImages.img1 && loadedImages.img2) {
+            if (sfmState.loadedImages.img1 && sfmState.loadedImages.img2) {
                 const canvas1 = document.getElementById('feature-canvas-1');
                 const canvas2 = document.getElementById('feature-canvas-2');
-                drawFeatures(canvas1, loadedImages.img1, detectedFeatures.image1, maxDisplayFeatures);
-                drawFeatures(canvas2, loadedImages.img2, detectedFeatures.image2, maxDisplayFeatures);
+                drawFeatures(canvas1, sfmState.loadedImages.img1, sfmState.detectedFeatures.image1, sfmState.maxDisplayFeatures);
+                drawFeatures(canvas2, sfmState.loadedImages.img2, sfmState.detectedFeatures.image2, sfmState.maxDisplayFeatures);
             }
         });
         
@@ -2035,21 +1955,21 @@ import { initUIEvents } from './js/ui.js';
         });
         
         document.getElementById('ratio-threshold-slider').addEventListener('input', (e) => {
-            ratioThreshold = parseFloat(e.target.value);
-            document.getElementById('ratio-threshold-value').textContent = ratioThreshold.toFixed(2);
+            sfmState.ratioThreshold = parseFloat(e.target.value);
+            document.getElementById('ratio-threshold-value').textContent = sfmState.ratioThreshold.toFixed(2);
         });
         
         document.getElementById('max-matches-slider').addEventListener('input', (e) => {
-            maxMatchesDisplay = parseInt(e.target.value);
-            document.getElementById('max-matches-value').textContent = maxMatchesDisplay;
+            sfmState.maxMatchesDisplay = parseInt(e.target.value);
+            document.getElementById('max-matches-value').textContent = sfmState.maxMatchesDisplay;
             // Redraw with new display limit
-            if (featureMatches.length > 0 && loadedImages.img1 && loadedImages.img2) {
+            if (sfmState.featureMatches.length > 0 && sfmState.loadedImages.img1 && sfmState.loadedImages.img2) {
                 const canvas = document.getElementById('matching-canvas');
-                const displayed = drawMatches(canvas, loadedImages.img1, loadedImages.img2, 
-                    featureDescriptors.image1.keypoints, featureDescriptors.image2.keypoints, 
-                    featureMatches, maxMatchesDisplay);
+                const displayed = drawMatches(canvas, sfmState.loadedImages.img1, sfmState.loadedImages.img2, 
+                    sfmState.featureDescriptors.image1.keypoints, sfmState.featureDescriptors.image2.keypoints, 
+                    sfmState.featureMatches, sfmState.maxMatchesDisplay);
                 document.getElementById('matching-stats').innerHTML = 
-                    `Found <strong style="color: #66bb6a">${featureMatches.length}</strong> matches, ` +
+                    `Found <strong style="color: #66bb6a">${sfmState.featureMatches.length}</strong> matches, ` +
                     `displaying <strong style="color: #4fc3f7">${displayed}</strong>`;
             }
         });
@@ -2069,13 +1989,13 @@ import { initUIEvents } from './js/ui.js';
         });
         
         document.getElementById('ransac-iterations-slider').addEventListener('input', (e) => {
-            ransacIterations = parseInt(e.target.value);
-            document.getElementById('ransac-iterations-value').textContent = ransacIterations;
+            sfmState.ransacIterations = parseInt(e.target.value);
+            document.getElementById('ransac-iterations-value').textContent = sfmState.ransacIterations;
         });
         
         document.getElementById('inlier-threshold-slider').addEventListener('input', (e) => {
-            inlierThreshold = parseFloat(e.target.value);
-            document.getElementById('inlier-threshold-value').textContent = inlierThreshold.toFixed(1);
+            sfmState.inlierThreshold = parseFloat(e.target.value);
+            document.getElementById('inlier-threshold-value').textContent = sfmState.inlierThreshold.toFixed(1);
         });
         
         document.getElementById('btn-reestimate-pose').addEventListener('click', () => {
@@ -2083,7 +2003,7 @@ import { initUIEvents } from './js/ui.js';
         });
         
         document.getElementById('use-intrinsics').addEventListener('change', (e) => {
-            useIntrinsics = e.target.checked;
+            sfmState.useIntrinsics = e.target.checked;
         });
         
         document.getElementById('btn-triangulate').addEventListener('click', () => {
@@ -2097,13 +2017,13 @@ import { initUIEvents } from './js/ui.js';
         });
         
         document.getElementById('max-reproj-slider').addEventListener('input', (e) => {
-            maxReprojError = parseFloat(e.target.value);
-            document.getElementById('max-reproj-value').textContent = maxReprojError.toFixed(1);
+            sfmState.maxReprojError = parseFloat(e.target.value);
+            document.getElementById('max-reproj-value').textContent = sfmState.maxReprojError.toFixed(1);
         });
         
         document.getElementById('min-angle-slider').addEventListener('input', (e) => {
-            minTriangleAngle = parseFloat(e.target.value);
-            document.getElementById('min-angle-value').textContent = minTriangleAngle.toFixed(1);
+            sfmState.minTriangleAngle = parseFloat(e.target.value);
+            document.getElementById('min-angle-value').textContent = sfmState.minTriangleAngle.toFixed(1);
         });
         
         document.getElementById('btn-retriangulate').addEventListener('click', () => {
@@ -2124,15 +2044,15 @@ import { initUIEvents } from './js/ui.js';
         });
         
         document.getElementById('show-gt-cameras').addEventListener('change', (e) => {
-            showGTCameras = e.target.checked;
-            if (showGTCameras && gtCameras.length === 0) {
+            sfmState.showGTCameras = e.target.checked;
+            if (sfmState.showGTCameras && sfmState.gtCameras.length === 0) {
                 loadGTCameras();
             }
         });
         
         document.getElementById('show-gt-points').addEventListener('change', (e) => {
-            showGTPoints = e.target.checked;
-            if (showGTPoints && gtPoints.length === 0) {
+            sfmState.showGTPoints = e.target.checked;
+            if (sfmState.showGTPoints && sfmState.gtPoints.length === 0) {
                 loadGTPoints();
             }
         });
@@ -2155,37 +2075,37 @@ import { initUIEvents } from './js/ui.js';
 
         console.log('Loading img1 from:', window.selectedImages[0].path);
         try {
-            loadedImages.img1 = await loadImage(window.selectedImages[0].path);
+            sfmState.loadedImages.img1 = await loadImage(window.selectedImages[0].path);
         } catch (e) {
             console.error('Failed to load image 1:', e);
             return;
         }
         console.log('Loading img2 from:', window.selectedImages[1].path);
         try {
-            loadedImages.img2 = await loadImage(window.selectedImages[1].path);
+            sfmState.loadedImages.img2 = await loadImage(window.selectedImages[1].path);
         } catch (e) {
             console.error('Failed to load image 2:', e);
             return;
         }
-        console.log('loadedImages.img1:', loadedImages.img1);
-        console.log('loadedImages.img2:', loadedImages.img2);
+        console.log('sfmState.loadedImages.img1:', sfmState.loadedImages.img1);
+        console.log('sfmState.loadedImages.img2:', sfmState.loadedImages.img2);
 
         // Detect features for image 1
         document.getElementById('feature-stats').textContent = 'Detecting features in image 1...';
         await new Promise(resolve => setTimeout(resolve, 50));
 
-        let corners1 = detectFeaturesFromImage(loadedImages.img1, maxDetectFeatures);
-        detectedFeatures.image1 = corners1;
-        const displayed1 = drawFeatures(canvas1, loadedImages.img1, corners1, maxDisplayFeatures);
+        let corners1 = detectFeaturesFromImage(sfmState.loadedImages.img1, sfmState.maxDetectFeatures);
+        sfmState.detectedFeatures.image1 = corners1;
+        const displayed1 = drawFeatures(canvas1, sfmState.loadedImages.img1, corners1, sfmState.maxDisplayFeatures);
         document.getElementById('keypoint-count-1').textContent = `${displayed1}/${corners1.length}`;
         
         // Detect features for image 2
         document.getElementById('feature-stats').textContent = 'Detecting features in image 2...';
         await new Promise(resolve => setTimeout(resolve, 50));
         
-        let corners2 = detectFeaturesFromImage(loadedImages.img2, maxDetectFeatures);
-        detectedFeatures.image2 = corners2;
-        const displayed2 = drawFeatures(canvas2, loadedImages.img2, corners2, maxDisplayFeatures);
+        let corners2 = detectFeaturesFromImage(sfmState.loadedImages.img2, sfmState.maxDetectFeatures);
+        sfmState.detectedFeatures.image2 = corners2;
+        const displayed2 = drawFeatures(canvas2, sfmState.loadedImages.img2, corners2, sfmState.maxDisplayFeatures);
         document.getElementById('keypoint-count-2').textContent = `${displayed2}/${corners2.length}`;
         
         // Update status
@@ -2200,7 +2120,7 @@ import { initUIEvents } from './js/ui.js';
     
     // Re-detect features with new parameters
     async function redetectFeatures() {
-        if (!loadedImages.img1 || !loadedImages.img2) return;
+        if (!sfmState.loadedImages.img1 || !sfmState.loadedImages.img2) return;
         await detectAndDisplayFeatures();
     }
     
@@ -2210,10 +2130,10 @@ import { initUIEvents } from './js/ui.js';
         document.getElementById('feature-matching-screen').classList.remove('hidden');
         
         // Reset sliders
-        document.getElementById('ratio-threshold-slider').value = ratioThreshold;
-        document.getElementById('ratio-threshold-value').textContent = ratioThreshold.toFixed(2);
-        document.getElementById('max-matches-slider').value = maxMatchesDisplay;
-        document.getElementById('max-matches-value').textContent = maxMatchesDisplay;
+        document.getElementById('ratio-threshold-slider').value = sfmState.ratioThreshold;
+        document.getElementById('ratio-threshold-value').textContent = sfmState.ratioThreshold.toFixed(2);
+        document.getElementById('max-matches-slider').value = sfmState.maxMatchesDisplay;
+        document.getElementById('max-matches-value').textContent = sfmState.maxMatchesDisplay;
         
         await computeAndDisplayMatches();
     }
@@ -2227,51 +2147,51 @@ import { initUIEvents } from './js/ui.js';
         try {
             // Create temporary canvases to get image data
             const tempCanvas1 = document.createElement('canvas');
-            tempCanvas1.width = loadedImages.img1.width;
-            tempCanvas1.height = loadedImages.img1.height;
+            tempCanvas1.width = sfmState.loadedImages.img1.width;
+            tempCanvas1.height = sfmState.loadedImages.img1.height;
             const ctx1 = tempCanvas1.getContext('2d');
-            ctx1.drawImage(loadedImages.img1, 0, 0);
-            const imageData1 = ctx1.getImageData(0, 0, loadedImages.img1.width, loadedImages.img1.height);
+            ctx1.drawImage(sfmState.loadedImages.img1, 0, 0);
+            const imageData1 = ctx1.getImageData(0, 0, sfmState.loadedImages.img1.width, sfmState.loadedImages.img1.height);
             
             const tempCanvas2 = document.createElement('canvas');
-            tempCanvas2.width = loadedImages.img2.width;
-            tempCanvas2.height = loadedImages.img2.height;
+            tempCanvas2.width = sfmState.loadedImages.img2.width;
+            tempCanvas2.height = sfmState.loadedImages.img2.height;
             const ctx2 = tempCanvas2.getContext('2d');
-            ctx2.drawImage(loadedImages.img2, 0, 0);
-            const imageData2 = ctx2.getImageData(0, 0, loadedImages.img2.width, loadedImages.img2.height);
+            ctx2.drawImage(sfmState.loadedImages.img2, 0, 0);
+            const imageData2 = ctx2.getImageData(0, 0, sfmState.loadedImages.img2.width, sfmState.loadedImages.img2.height);
             
             // Compute descriptors
             document.getElementById('matching-stats').textContent = 'Computing descriptors for image 1...';
             await new Promise(resolve => setTimeout(resolve, 50));
-            featureDescriptors.image1 = computeDescriptors(imageData1, detectedFeatures.image1);
+            sfmState.featureDescriptors.image1 = computeDescriptors(imageData1, sfmState.detectedFeatures.image1);
             
             document.getElementById('matching-stats').textContent = 'Computing descriptors for image 2...';
             await new Promise(resolve => setTimeout(resolve, 50));
-            featureDescriptors.image2 = computeDescriptors(imageData2, detectedFeatures.image2);
+            sfmState.featureDescriptors.image2 = computeDescriptors(imageData2, sfmState.detectedFeatures.image2);
             
             // Match descriptors
             document.getElementById('matching-stats').textContent = 'Matching features...';
             await new Promise(resolve => setTimeout(resolve, 50));
             
-            featureMatches = matchDescriptors(
-                featureDescriptors.image1.descriptors, 
-                featureDescriptors.image2.descriptors, 
-                ratioThreshold
+            sfmState.featureMatches = matchDescriptors(
+                sfmState.featureDescriptors.image1.descriptors, 
+                sfmState.featureDescriptors.image2.descriptors, 
+                sfmState.ratioThreshold
             );
             
             // Draw matches
             const canvas = document.getElementById('matching-canvas');
-            const displayed = drawMatches(canvas, loadedImages.img1, loadedImages.img2, 
-                featureDescriptors.image1.keypoints, featureDescriptors.image2.keypoints, 
-                featureMatches, maxMatchesDisplay);
+            const displayed = drawMatches(canvas, sfmState.loadedImages.img1, sfmState.loadedImages.img2, 
+                sfmState.featureDescriptors.image1.keypoints, sfmState.featureDescriptors.image2.keypoints, 
+                sfmState.featureMatches, sfmState.maxMatchesDisplay);
             
             // Update status
             document.getElementById('matching-stats').innerHTML = 
-                `Found <strong style="color: #66bb6a">${featureMatches.length}</strong> matches, ` +
+                `Found <strong style="color: #66bb6a">${sfmState.featureMatches.length}</strong> matches, ` +
                 `displaying <strong style="color: #4fc3f7">${displayed}</strong>`;
             
             // Enable pose estimation button if we have enough matches
-            document.getElementById('btn-estimate-pose').disabled = featureMatches.length < 8;
+            document.getElementById('btn-estimate-pose').disabled = sfmState.featureMatches.length < 8;
             
         } catch (error) {
             console.error('Error matching features:', error);
@@ -2282,27 +2202,27 @@ import { initUIEvents } from './js/ui.js';
 
     // Re-match features with new parameters
     async function rematchFeatures() {
-        if (featureDescriptors.image1.descriptors.length === 0) return;
+        if (sfmState.featureDescriptors.image1.descriptors.length === 0) return;
         
         document.getElementById('matching-stats').textContent = 'Re-matching features...';
         await new Promise(resolve => setTimeout(resolve, 50));
         
-        featureMatches = matchDescriptors(
-            featureDescriptors.image1.descriptors, 
-            featureDescriptors.image2.descriptors, 
-            ratioThreshold
+        sfmState.featureMatches = matchDescriptors(
+            sfmState.featureDescriptors.image1.descriptors, 
+            sfmState.featureDescriptors.image2.descriptors, 
+            sfmState.ratioThreshold
         );
         
         const canvas = document.getElementById('matching-canvas');
-        const displayed = drawMatches(canvas, loadedImages.img1, loadedImages.img2, 
-            featureDescriptors.image1.keypoints, featureDescriptors.image2.keypoints, 
-            featureMatches, maxMatchesDisplay);
+        const displayed = drawMatches(canvas, sfmState.loadedImages.img1, sfmState.loadedImages.img2, 
+            sfmState.featureDescriptors.image1.keypoints, sfmState.featureDescriptors.image2.keypoints, 
+            sfmState.featureMatches, sfmState.maxMatchesDisplay);
         
         document.getElementById('matching-stats').innerHTML = 
-            `Found <strong style="color: #66bb6a">${featureMatches.length}</strong> matches, ` +
+            `Found <strong style="color: #66bb6a">${sfmState.featureMatches.length}</strong> matches, ` +
             `displaying <strong style="color: #4fc3f7">${displayed}</strong>`;
         
-        document.getElementById('btn-estimate-pose').disabled = featureMatches.length < 8;
+        document.getElementById('btn-estimate-pose').disabled = sfmState.featureMatches.length < 8;
     }
     
     // Show pose estimation screen
@@ -2311,10 +2231,10 @@ import { initUIEvents } from './js/ui.js';
         document.getElementById('pose-estimation-screen').classList.remove('hidden');
         
         // Reset sliders
-        document.getElementById('ransac-iterations-slider').value = ransacIterations;
-        document.getElementById('ransac-iterations-value').textContent = ransacIterations;
-        document.getElementById('inlier-threshold-slider').value = inlierThreshold;
-        document.getElementById('inlier-threshold-value').textContent = inlierThreshold.toFixed(1);
+        document.getElementById('ransac-iterations-slider').value = sfmState.ransacIterations;
+        document.getElementById('ransac-iterations-value').textContent = sfmState.ransacIterations;
+        document.getElementById('inlier-threshold-slider').value = sfmState.inlierThreshold;
+        document.getElementById('inlier-threshold-value').textContent = sfmState.inlierThreshold.toFixed(1);
         
         // Load camera intrinsics
         await loadCameraIntrinsics();
@@ -2338,31 +2258,31 @@ import { initUIEvents } from './js/ui.js';
                 const cy = intrinsics.params[2];
                 
                 // Scale intrinsics based on image size (images_8 are 1/8 resolution)
-                const scaleX = loadedImages.img1.width / intrinsics.width;
-                const scaleY = loadedImages.img1.height / intrinsics.height;
+                const scaleX = sfmState.loadedImages.img1.width / intrinsics.width;
+                const scaleY = sfmState.loadedImages.img1.height / intrinsics.height;
                 
-                cameraIntrinsicsK = [
+                sfmState.cameraIntrinsicsK = [
                     [f * scaleX, 0, cx * scaleX],
                     [0, f * scaleY, cy * scaleY],
                     [0, 0, 1]
                 ];
                 
                 // Display intrinsics
-                document.getElementById('intrinsics-matrix').textContent = formatMatrix(cameraIntrinsicsK, 2);
+                document.getElementById('intrinsics-matrix').textContent = formatMatrix(sfmState.cameraIntrinsicsK, 2);
             }
         } catch (error) {
             console.error('Failed to load intrinsics:', error);
             // Use default intrinsics
-            const w = loadedImages.img1.width;
-            const h = loadedImages.img1.height;
+            const w = sfmState.loadedImages.img1.width;
+            const h = sfmState.loadedImages.img1.height;
             const f = Math.max(w, h);
-            cameraIntrinsicsK = [
+            sfmState.cameraIntrinsicsK = [
                 [f, 0, w / 2],
                 [0, f, h / 2],
                 [0, 0, 1]
             ];
             document.getElementById('intrinsics-matrix').textContent = 
-                formatMatrix(cameraIntrinsicsK, 2) + '\n(default)';
+                formatMatrix(sfmState.cameraIntrinsicsK, 2) + '\n(default)';
         }
     }
     
@@ -2373,15 +2293,15 @@ import { initUIEvents } from './js/ui.js';
         await new Promise(resolve => setTimeout(resolve, 50));
         
         // Get matched point pairs
-        const kp1 = featureDescriptors.image1.keypoints;
-        const kp2 = featureDescriptors.image2.keypoints;
+        const kp1 = sfmState.featureDescriptors.image1.keypoints;
+        const kp2 = sfmState.featureDescriptors.image2.keypoints;
         
-        const pts1 = featureMatches.map(m => kp1[m.queryIdx]);
-        const pts2 = featureMatches.map(m => kp2[m.trainIdx]);
+        const pts1 = sfmState.featureMatches.map(m => kp1[m.queryIdx]);
+        const pts2 = sfmState.featureMatches.map(m => kp2[m.trainIdx]);
         
-        debugInfo(`Image 1 size: ${loadedImages.img1.width}x${loadedImages.img1.height}`);
-        debugInfo(`Image 2 size: ${loadedImages.img2.width}x${loadedImages.img2.height}`);
-        debugInfo(`Number of matches: ${featureMatches.length}`);
+        debugInfo(`Image 1 size: ${sfmState.loadedImages.img1.width}x${sfmState.loadedImages.img1.height}`);
+        debugInfo(`Image 2 size: ${sfmState.loadedImages.img2.width}x${sfmState.loadedImages.img2.height}`);
+        debugInfo(`Number of matches: ${sfmState.featureMatches.length}`);
         
         // Log some sample point coordinates
         if (pts1.length > 0) {
@@ -2390,13 +2310,13 @@ import { initUIEvents } from './js/ui.js';
         
         // Choose K matrix based on option
         let K;
-        if (useIntrinsics && cameraIntrinsicsK) {
-            K = cameraIntrinsicsK;
+        if (sfmState.useIntrinsics && sfmState.cameraIntrinsicsK) {
+            K = sfmState.cameraIntrinsicsK;
             debugInfo('Using camera intrinsics from COLMAP');
         } else {
             // Use simple intrinsics (identity-like, assuming normalized coords or simple pinhole)
-            const w = loadedImages.img1.width;
-            const h = loadedImages.img1.height;
+            const w = sfmState.loadedImages.img1.width;
+            const h = sfmState.loadedImages.img1.height;
             const f = (w + h) / 2;  // Approximate focal length
             K = [
                 [f, 0, w / 2],
@@ -2408,24 +2328,24 @@ import { initUIEvents } from './js/ui.js';
         
         // Display K matrix
         document.getElementById('intrinsics-matrix').textContent = formatMatrix(K, 2) + 
-            (useIntrinsics ? '\n(from COLMAP)' : '\n(estimated)');
+            (sfmState.useIntrinsics ? '\n(from COLMAP)' : '\n(estimated)');
         
         // Run RANSAC
-        const result = ransacEssentialMatrix(pts1, pts2, K, ransacIterations, inlierThreshold);
-        estimatedPose = result;
+        const result = ransacEssentialMatrix(pts1, pts2, K, sfmState.ransacIterations, sfmState.inlierThreshold);
+        sfmState.estimatedPose = result;
         
         // Update debug panel
         updateDebugPanel();
         
         // Draw inlier matches
         const canvas = document.getElementById('inlier-canvas');
-        const inlierCount = drawInlierMatches(canvas, loadedImages.img1, loadedImages.img2,
-            kp1, kp2, featureMatches, result.inliers);
+        const inlierCount = drawInlierMatches(canvas, sfmState.loadedImages.img1, sfmState.loadedImages.img2,
+            kp1, kp2, sfmState.featureMatches, result.inliers);
         
         // Update info
-        const inlierRatio = (100 * result.inliers.length / featureMatches.length).toFixed(1);
+        const inlierRatio = (100 * result.inliers.length / sfmState.featureMatches.length).toFixed(1);
         document.getElementById('inlier-info').innerHTML = 
-            `Inliers: <strong style="color: #66bb6a">${result.inliers.length}</strong>/${featureMatches.length} ` +
+            `Inliers: <strong style="color: #66bb6a">${result.inliers.length}</strong>/${sfmState.featureMatches.length} ` +
             `(${inlierRatio}%)`;
         
         if (result.R && result.t) {
@@ -2484,10 +2404,10 @@ import { initUIEvents } from './js/ui.js';
         document.getElementById('triangulation-screen').classList.remove('hidden');
         
         // Reset sliders
-        document.getElementById('max-reproj-slider').value = maxReprojError;
-        document.getElementById('max-reproj-value').textContent = maxReprojError.toFixed(1);
-        document.getElementById('min-angle-slider').value = minTriangleAngle;
-        document.getElementById('min-angle-value').textContent = minTriangleAngle.toFixed(1);
+        document.getElementById('max-reproj-slider').value = sfmState.maxReprojError;
+        document.getElementById('max-reproj-value').textContent = sfmState.maxReprojError.toFixed(1);
+        document.getElementById('min-angle-slider').value = sfmState.minTriangleAngle;
+        document.getElementById('min-angle-value').textContent = sfmState.minTriangleAngle.toFixed(1);
         
         // Triangulate points
         await triangulatePoints();
@@ -2540,9 +2460,9 @@ import { initUIEvents } from './js/ui.js';
         document.getElementById('triangulation-stats').textContent = 'Triangulating points...';
         await new Promise(resolve => setTimeout(resolve, 50));
         
-        const R = estimatedPose.R;
-        const t = estimatedPose.t;
-        const K = cameraIntrinsicsK;
+        const R = sfmState.estimatedPose.R;
+        const t = sfmState.estimatedPose.t;
+        const K = sfmState.cameraIntrinsicsK;
         const Kinv = invertK(K);
         
         // Camera matrices
@@ -2571,25 +2491,25 @@ import { initUIEvents } from './js/ui.js';
         ];
         
         // Get inlier keypoints
-        const kp1 = featureDescriptors.image1.keypoints;
-        const kp2 = featureDescriptors.image2.keypoints;
+        const kp1 = sfmState.featureDescriptors.image1.keypoints;
+        const kp2 = sfmState.featureDescriptors.image2.keypoints;
         
-        triangulatedPoints = [];
-        triangulatedPointsWithReproj = [];
+        sfmState.triangulatedPoints = [];
+        sfmState.triangulatedPointsWithReproj = [];
         let totalReprojError = 0;
         let minDepth = Infinity, maxDepth = -Infinity;
         let depthSum = 0;
         
         // Get image data for colors
         const tempCanvas = document.createElement('canvas');
-        tempCanvas.width = loadedImages.img1.width;
-        tempCanvas.height = loadedImages.img1.height;
+        tempCanvas.width = sfmState.loadedImages.img1.width;
+        tempCanvas.height = sfmState.loadedImages.img1.height;
         const ctx = tempCanvas.getContext('2d');
-        ctx.drawImage(loadedImages.img1, 0, 0);
+        ctx.drawImage(sfmState.loadedImages.img1, 0, 0);
         const imageData = ctx.getImageData(0, 0, tempCanvas.width, tempCanvas.height);
         
-        for (const idx of estimatedPose.inliers) {
-            const match = featureMatches[idx];
+        for (const idx of sfmState.estimatedPose.inliers) {
+            const match = sfmState.featureMatches[idx];
             const pt1 = kp1[match.queryIdx];
             const pt2 = kp2[match.trainIdx];
             
@@ -2611,11 +2531,11 @@ import { initUIEvents } from './js/ui.js';
             const err2 = computeReprojectionError(X, P2, pt2, K);
             const avgError = (err1 + err2) / 2;
             
-            if (avgError > maxReprojError) continue;
+            if (avgError > sfmState.maxReprojError) continue;
             
             // Compute triangulation angle
             const angle = computeTriangulationAngle(X, C1, C2);
-            if (angle < minTriangleAngle) continue;
+            if (angle < sfmState.minTriangleAngle) continue;
             
             // Get color from image
             const px = Math.round(pt1.x);
@@ -2625,14 +2545,14 @@ import { initUIEvents } from './js/ui.js';
             const g = imageData.data[pixelIdx + 1] / 255;
             const b = imageData.data[pixelIdx + 2] / 255;
             
-            triangulatedPoints.push({
+            sfmState.triangulatedPoints.push({
                 x: X.x, y: X.y, z: X.z,
                 r, g, b,
                 reprojError: avgError
             });
             
             // Store with observation data for reprojection visualization
-            triangulatedPointsWithReproj.push({
+            sfmState.triangulatedPointsWithReproj.push({
                 x: X.x, y: X.y, z: X.z,
                 obs1: pt1,
                 obs2: pt2,
@@ -2646,8 +2566,8 @@ import { initUIEvents } from './js/ui.js';
         }
         
         // Update statistics
-        const numPoints = triangulatedPoints.length;
-        document.getElementById('stat-inliers').textContent = estimatedPose.inliers.length;
+        const numPoints = sfmState.triangulatedPoints.length;
+        document.getElementById('stat-inliers').textContent = sfmState.estimatedPose.inliers.length;
         document.getElementById('stat-valid-points').textContent = numPoints;
         document.getElementById('tri-point-count').textContent = numPoints;
         
@@ -2696,10 +2616,10 @@ import { initUIEvents } from './js/ui.js';
         ctx.fillStyle = '#111';
         ctx.fillRect(0, 0, canvas.width, canvas.height);
         
-        if (triangulatedPoints.length === 0) {
+        if (sfmState.triangulatedPoints.length === 0) {
             ctx.fillStyle = '#666';
             ctx.font = '14px sans-serif';
-            ctx.textAlign = 'center';
+            ctx.textAlign = 'renderState.center';
             ctx.fillText('No points to display', canvas.width/2, canvas.height/2);
             return;
         }
@@ -2709,7 +2629,7 @@ import { initUIEvents } from './js/ui.js';
         let minY = Infinity, maxY = -Infinity;
         let minZ = Infinity, maxZ = -Infinity;
         
-        for (const p of triangulatedPoints) {
+        for (const p of sfmState.triangulatedPoints) {
             minX = Math.min(minX, p.x); maxX = Math.max(maxX, p.x);
             minY = Math.min(minY, p.y); maxY = Math.max(maxY, p.y);
             minZ = Math.min(minZ, p.z); maxZ = Math.max(maxZ, p.z);
@@ -2728,7 +2648,7 @@ import { initUIEvents } from './js/ui.js';
         const offsetY = canvas.height / 2;
         
         // Draw points (simple XY projection with Z as intensity)
-        for (const p of triangulatedPoints) {
+        for (const p of sfmState.triangulatedPoints) {
             const screenX = offsetX + (p.x - centerX) * scale;
             const screenY = offsetY - (p.y - centerY) * scale;  // Flip Y
             
@@ -2799,8 +2719,8 @@ import { initUIEvents } from './js/ui.js';
         ctx.setLineDash([]);
         
         // Draw some sample 3D points
-        if (triangulatedPoints.length > 0) {
-            const samplePoints = triangulatedPoints.slice(0, 20);
+        if (sfmState.triangulatedPoints.length > 0) {
+            const samplePoints = sfmState.triangulatedPoints.slice(0, 20);
             for (const p of samplePoints) {
                 const px = centerX + (p.x - 0) * scale * 10;
                 const py = centerY - 30 - (p.z) * scale * 5;
@@ -2839,7 +2759,7 @@ import { initUIEvents } from './js/ui.js';
         // Label
         ctx.fillStyle = color;
         ctx.font = '12px sans-serif';
-        ctx.textAlign = 'center';
+        ctx.textAlign = 'renderState.center';
         ctx.fillText(label, x, y + 30);
     }
     
@@ -2857,7 +2777,7 @@ import { initUIEvents } from './js/ui.js';
         // Update info
         document.querySelector('#info h1').textContent = '🔧 SfM Reconstruction';
         document.querySelector('#info p').textContent = 'Structure from Motion result';
-        document.getElementById('point-count').textContent = triangulatedPoints.length.toLocaleString();
+        document.getElementById('point-count').textContent = sfmState.triangulatedPoints.length.toLocaleString();
         document.getElementById('camera-count').textContent = '2';
         
         // Start rendering
@@ -2872,18 +2792,18 @@ import { initUIEvents } from './js/ui.js';
         const ctx2 = canvas2.getContext('2d');
         
         // Set canvas size
-        canvas1.width = loadedImages.img1.width;
-        canvas1.height = loadedImages.img1.height;
-        canvas2.width = loadedImages.img2.width;
-        canvas2.height = loadedImages.img2.height;
+        canvas1.width = sfmState.loadedImages.img1.width;
+        canvas1.height = sfmState.loadedImages.img1.height;
+        canvas2.width = sfmState.loadedImages.img2.width;
+        canvas2.height = sfmState.loadedImages.img2.height;
         
         // Draw images
-        ctx1.drawImage(loadedImages.img1, 0, 0);
-        ctx2.drawImage(loadedImages.img2, 0, 0);
+        ctx1.drawImage(sfmState.loadedImages.img1, 0, 0);
+        ctx2.drawImage(sfmState.loadedImages.img2, 0, 0);
         
-        const R = estimatedPose.R;
-        const t = estimatedPose.t;
-        const K = cameraIntrinsicsK;
+        const R = sfmState.estimatedPose.R;
+        const t = sfmState.estimatedPose.t;
+        const K = sfmState.cameraIntrinsicsK;
         
         // Camera matrices
         const P1 = [[1,0,0,0], [0,1,0,0], [0,0,1,0]];
@@ -2893,11 +2813,11 @@ import { initUIEvents } from './js/ui.js';
             [R[2][0], R[2][1], R[2][2], t[2]]
         ];
         
-        const kp1 = featureDescriptors.image1.keypoints;
-        const kp2 = featureDescriptors.image2.keypoints;
+        const kp1 = sfmState.featureDescriptors.image1.keypoints;
+        const kp2 = sfmState.featureDescriptors.image2.keypoints;
         
         // Draw for each triangulated point
-        for (const pt of triangulatedPointsWithReproj) {
+        for (const pt of sfmState.triangulatedPointsWithReproj) {
             const X = { x: pt.x, y: pt.y, z: pt.z };
             
             // Original keypoints (green circles)
@@ -2987,7 +2907,7 @@ import { initUIEvents } from './js/ui.js';
             const response = await fetch('data/fern/reconstruction.json');
             const data = await response.json();
             
-            gtCameras = data.cameras.map(cam => ({
+            sfmState.gtCameras = data.cameras.map(cam => ({
                 position: cam.position,
                 direction: cam.view_direction,
                 name: cam.name,
@@ -3000,7 +2920,7 @@ import { initUIEvents } from './js/ui.js';
             // Update GT camera buffer
             updateGTCameraBuffers();
             
-            console.log(`Loaded ${gtCameras.length} GT cameras`);
+            console.log(`Loaded ${sfmState.gtCameras.length} GT cameras`);
         } catch (error) {
             console.error('Failed to load GT cameras:', error);
         }
@@ -3012,8 +2932,8 @@ import { initUIEvents } from './js/ui.js';
         // Find the GT cameras that correspond to our selected images
         
         const sfmCam1 = { pos: [0, 0, 0], dir: [0, 0, 1] };
-        const R = estimatedPose.R;
-        const t = estimatedPose.t;
+        const R = sfmState.estimatedPose.R;
+        const t = sfmState.estimatedPose.t;
         const Rt = Matrix.transpose(R);
         const sfmCam2Pos = [
             -(Rt[0][0]*t[0] + Rt[0][1]*t[1] + Rt[0][2]*t[2]),
@@ -3028,7 +2948,7 @@ import { initUIEvents } from './js/ui.js';
         
         // GT cameras are sorted, find by index
         let gtCam1 = null, gtCam2 = null;
-        for (const cam of gtCameras) {
+        for (const cam of sfmState.gtCameras) {
             const camIdx = parseInt(cam.name.match(/\d+/)?.[0] || '-1');
             if (camIdx === imgIdx1) gtCam1 = cam;
             if (camIdx === imgIdx2) gtCam2 = cam;
@@ -3036,7 +2956,7 @@ import { initUIEvents } from './js/ui.js';
         
         if (!gtCam1 || !gtCam2) {
             console.warn('Could not find matching GT cameras, using identity transform');
-            sfmToGtTransform = { scale: 1, R: Matrix.eye(3), t: [0, 0, 0] };
+            sfmState.sfmToGtTransform = { scale: 1, R: Matrix.eye(3), t: [0, 0, 0] };
             return;
         }
         
@@ -3054,7 +2974,7 @@ import { initUIEvents } from './js/ui.js';
         const translation = gtCam1.position.slice();
         
         // Store transform
-        sfmToGtTransform = {
+        sfmState.sfmToGtTransform = {
             scale: scale,
             R: Matrix.eye(3),  // Simplified: identity rotation
             t: translation
@@ -3065,10 +2985,10 @@ import { initUIEvents } from './js/ui.js';
     
     // Transform a point from SfM to GT coordinates
     function transformSfmToGt(p) {
-        if (!sfmToGtTransform) return p;
+        if (!sfmState.sfmToGtTransform) return p;
         
-        const s = sfmToGtTransform.scale;
-        const t = sfmToGtTransform.t;
+        const s = sfmState.sfmToGtTransform.scale;
+        const t = sfmState.sfmToGtTransform.t;
         
         return [
             p[0] * s + t[0],
@@ -3083,19 +3003,19 @@ import { initUIEvents } from './js/ui.js';
             const response = await fetch('data/fern/reconstruction.json');
             const data = await response.json();
             
-            gtPoints = data.points;
+            sfmState.gtPoints = data.points;
             
             // Create buffers
-            if (!gtPointBuffer) {
-                gtPointBuffer = gl.createBuffer();
-                gtColorBuffer = gl.createBuffer();
+            if (!sfmState.gtPointBuffer) {
+                sfmState.gtPointBuffer = gl.createBuffer();
+                sfmState.gtColorBuffer = gl.createBuffer();
             }
             
-            const positions = new Float32Array(gtPoints.length * 3);
-            const colors = new Float32Array(gtPoints.length * 3);
+            const positions = new Float32Array(sfmState.gtPoints.length * 3);
+            const colors = new Float32Array(sfmState.gtPoints.length * 3);
             
-            for (let i = 0; i < gtPoints.length; i++) {
-                const p = gtPoints[i];
+            for (let i = 0; i < sfmState.gtPoints.length; i++) {
+                const p = sfmState.gtPoints[i];
                 positions[i*3] = p.x;
                 positions[i*3+1] = p.y;
                 positions[i*3+2] = p.z;
@@ -3104,15 +3024,15 @@ import { initUIEvents } from './js/ui.js';
                 colors[i*3+2] = p.b / 255;
             }
             
-            gl.bindBuffer(gl.ARRAY_BUFFER, gtPointBuffer);
+            gl.bindBuffer(gl.ARRAY_BUFFER, sfmState.gtPointBuffer);
             gl.bufferData(gl.ARRAY_BUFFER, positions, gl.STATIC_DRAW);
             
-            gl.bindBuffer(gl.ARRAY_BUFFER, gtColorBuffer);
+            gl.bindBuffer(gl.ARRAY_BUFFER, sfmState.gtColorBuffer);
             gl.bufferData(gl.ARRAY_BUFFER, colors, gl.STATIC_DRAW);
             
-            gtPointCount = gtPoints.length;
+            sfmState.gtPointCount = sfmState.gtPoints.length;
             
-            console.log(`Loaded ${gtPointCount} GT points`);
+            console.log(`Loaded ${sfmState.gtPointCount} GT points`);
         } catch (error) {
             console.error('Failed to load GT points:', error);
         }
@@ -3120,14 +3040,14 @@ import { initUIEvents } from './js/ui.js';
     
     // Update GT camera buffers for rendering
     function updateGTCameraBuffers() {
-        if (!gtCameraBuffer) {
-            gtCameraBuffer = gl.createBuffer();
+        if (!sfmState.gtCameraBuffer) {
+            sfmState.gtCameraBuffer = gl.createBuffer();
         }
         
         const vertices = [];
-        const scale = baseSceneScale * cameraSize;
+        const scale = renderState.baseSceneScale * renderState.cameraSize;
         
-        for (const cam of gtCameras) {
+        for (const cam of sfmState.gtCameras) {
             const pos = cam.position;
             const dir = cam.direction;
             const right = normalize(cross(dir, [0, 1, 0]));
@@ -3163,22 +3083,22 @@ import { initUIEvents } from './js/ui.js';
             }
         }
         
-        gl.bindBuffer(gl.ARRAY_BUFFER, gtCameraBuffer);
+        gl.bindBuffer(gl.ARRAY_BUFFER, sfmState.gtCameraBuffer);
         gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(vertices), gl.DYNAMIC_DRAW);
-        gtCameraVertexCount = vertices.length / 3;
+        sfmState.gtCameraVertexCount = vertices.length / 3;
     }
     
     // Setup scene with triangulated points and cameras
     function setupTriangulatedScene() {
         // Convert triangulated points to buffers
-        const positions = new Float32Array(triangulatedPoints.length * 3);
-        const colors = new Float32Array(triangulatedPoints.length * 3);
+        const positions = new Float32Array(sfmState.triangulatedPoints.length * 3);
+        const colors = new Float32Array(sfmState.triangulatedPoints.length * 3);
         
         let minX = Infinity, minY = Infinity, minZ = Infinity;
         let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
         
-        for (let i = 0; i < triangulatedPoints.length; i++) {
-            const p = triangulatedPoints[i];
+        for (let i = 0; i < sfmState.triangulatedPoints.length; i++) {
+            const p = sfmState.triangulatedPoints[i];
             positions[i*3] = p.x;
             positions[i*3+1] = p.y;
             positions[i*3+2] = p.z;
@@ -3191,21 +3111,21 @@ import { initUIEvents } from './js/ui.js';
             minZ = Math.min(minZ, p.z); maxZ = Math.max(maxZ, p.z);
         }
         
-        center = [(minX+maxX)/2, (minY+maxY)/2, (minZ+maxZ)/2];
-        distance = Math.max(maxX-minX, maxY-minY, maxZ-minZ) * 1.5;
-        baseSceneScale = distance * 0.02;
+        renderState.center = [(minX+maxX)/2, (minY+maxY)/2, (minZ+maxZ)/2];
+        renderState.distance = Math.max(maxX-minX, maxY-minY, maxZ-minZ) * 1.5;
+        renderState.baseSceneScale = renderState.distance * 0.02;
         
-        gl.bindBuffer(gl.ARRAY_BUFFER, pointBuffer);
+        gl.bindBuffer(gl.ARRAY_BUFFER, renderState.pointBuffer);
         gl.bufferData(gl.ARRAY_BUFFER, positions, gl.STATIC_DRAW);
         
-        gl.bindBuffer(gl.ARRAY_BUFFER, colorBuffer);
+        gl.bindBuffer(gl.ARRAY_BUFFER, renderState.colorBuffer);
         gl.bufferData(gl.ARRAY_BUFFER, colors, gl.STATIC_DRAW);
         
-        pointCount = triangulatedPoints.length;
+        renderState.pointCount = sfmState.triangulatedPoints.length;
         
         // Setup cameras
-        const R = estimatedPose.R;
-        const t = estimatedPose.t;
+        const R = sfmState.estimatedPose.R;
+        const t = sfmState.estimatedPose.t;
         
         // Camera 1 at origin, looking along +Z
         const cam1Pos = [0, 0, 0];
@@ -3222,12 +3142,12 @@ import { initUIEvents } from './js/ui.js';
         const cam2Dir = [R[0][2], R[1][2], R[2][2]];
         
         // Create camera visualization data
-        cameraImages = [];
+        renderState.cameraImages = [];
         
         // Camera 1
         const right1 = normalize(cross(cam1Dir, [0, 1, 0]));
         const up1 = normalize(cross(right1, cam1Dir));
-        cameraImages.push({
+        renderState.cameraImages.push({
             position: cam1Pos,
             direction: cam1Dir,
             right: right1,
@@ -3242,7 +3162,7 @@ import { initUIEvents } from './js/ui.js';
         // Camera 2
         const right2 = normalize(cross(cam2Dir, [0, 1, 0]));
         const up2 = normalize(cross(right2, cam2Dir));
-        cameraImages.push({
+        renderState.cameraImages.push({
             position: cam2Pos,
             direction: cam2Dir,
             right: right2,
@@ -3256,10 +3176,10 @@ import { initUIEvents } from './js/ui.js';
         
         // Load textures for camera images
         loadTexture(window.selectedImages[0].path).then(tex => {
-            cameraImages[0].texture = tex;
+            renderState.cameraImages[0].texture = tex;
         });
         loadTexture(window.selectedImages[1].path).then(tex => {
-            cameraImages[1].texture = tex;
+            renderState.cameraImages[1].texture = tex;
         });
         
         updateCameraBuffers();
@@ -3299,7 +3219,7 @@ import { initUIEvents } from './js/ui.js';
     
     // Start the SfM pipeline (now called after feature matching)
     async function startSfMPipeline() {
-        isSfMMode = true;
+        sfmState.isSfMMode = true;
         document.getElementById('feature-detection-screen').classList.add('hidden');
         document.getElementById('loading').classList.remove('hidden');
         document.getElementById('loading-text').textContent = 'Initializing SfM pipeline...';
@@ -3308,10 +3228,10 @@ import { initUIEvents } from './js/ui.js';
         document.getElementById('sfm-progress').classList.remove('hidden');
         
         console.log('Starting SfM with images:', window.selectedImages);
-        console.log('Detected features:', detectedFeatures);
+        console.log('Detected features:', sfmState.detectedFeatures);
         
         // Simulate SfM progress steps (placeholder for now)
-        await updateSfMStep('step-features', 'completed', `Detected ${detectedFeatures.image1.length + detectedFeatures.image2.length} keypoints`);
+        await updateSfMStep('step-features', 'completed', `Detected ${sfmState.detectedFeatures.image1.length + sfmState.detectedFeatures.image2.length} keypoints`);
         await updateSfMStep('step-matching', 'active', 'Finding correspondences...');
         
         // TODO: Implement actual SfM pipeline:
@@ -3354,18 +3274,18 @@ import { initUIEvents } from './js/ui.js';
         const positions = new Float32Array([0, 0, 0]);
         const colors = new Float32Array([1, 1, 1]);
         
-        center = [0, 0, 0];
-        distance = 5;
-        baseSceneScale = 0.1;
+        renderState.center = [0, 0, 0];
+        renderState.distance = 5;
+        renderState.baseSceneScale = 0.1;
         
-        gl.bindBuffer(gl.ARRAY_BUFFER, pointBuffer);
+        gl.bindBuffer(gl.ARRAY_BUFFER, renderState.pointBuffer);
         gl.bufferData(gl.ARRAY_BUFFER, positions, gl.STATIC_DRAW);
         
-        gl.bindBuffer(gl.ARRAY_BUFFER, colorBuffer);
+        gl.bindBuffer(gl.ARRAY_BUFFER, renderState.colorBuffer);
         gl.bufferData(gl.ARRAY_BUFFER, colors, gl.STATIC_DRAW);
         
-        pointCount = 1;
-        cameraImages = [];
+        renderState.pointCount = 1;
+        renderState.cameraImages = [];
     }
 
     function resize() {
@@ -3380,7 +3300,7 @@ import { initUIEvents } from './js/ui.js';
             const data = await response.json();
             
             // Store camera intrinsics
-            cameraIntrinsics = data.camera_intrinsics || {};
+            renderState.cameraIntrinsics = data.camera_intrinsics || {};
             
             setupPointCloud(data.points);
             await setupCameras(data.cameras);
@@ -3394,10 +3314,10 @@ import { initUIEvents } from './js/ui.js';
             document.getElementById('detail-cameras').textContent = data.cameras.length;
             
             // Populate camera model info from first intrinsic
-            const intrinsicKeys = Object.keys(cameraIntrinsics);
+            const intrinsicKeys = Object.renderState.keys(renderState.cameraIntrinsics);
             if (intrinsicKeys.length > 0) {
-                const cam = cameraIntrinsics[intrinsicKeys[0]];
-                document.getElementById('detail-cam-model').textContent = CAMERA_MODELS[cam.model_id] || `Model ${cam.model_id}`;
+                const cam = renderState.cameraIntrinsics[intrinsicKeys[0]];
+                document.getElementById('detail-cam-model').textContent = renderState.CAMERA_MODELS[cam.model_id] || `Model ${cam.model_id}`;
                 document.getElementById('detail-resolution').textContent = `${cam.width} × ${cam.height}`;
                 if (cam.params && cam.params.length >= 2) {
                     document.getElementById('detail-focal').textContent = `${cam.params[0].toFixed(2)} px`;
@@ -3420,7 +3340,7 @@ import { initUIEvents } from './js/ui.js';
             
             // Setup close button handler
             document.getElementById('close-camera-details').addEventListener('click', () => {
-                selectedCamera = null;
+                renderState.selectedCamera = null;
                 document.getElementById('dataset-details').style.display = 'block';
                 document.getElementById('camera-details').style.display = 'none';
             });
@@ -3453,21 +3373,21 @@ import { initUIEvents } from './js/ui.js';
         const projection = mat4.perspective(Math.PI / 3, aspect, 0.01, 1000);
         
         const effectiveCenter = [
-            center[0] + cameraPos[0],
-            center[1] + cameraPos[1],
-            center[2] + cameraPos[2]
+            renderState.center[0] + renderState.cameraPos[0],
+            renderState.center[1] + renderState.cameraPos[1],
+            renderState.center[2] + renderState.cameraPos[2]
         ];
         
         let view;
-        if (freeRotation) {
-            const eye = [0, 0, distance];
+        if (renderState.freeRotation) {
+            const eye = [0, 0, renderState.distance];
             const lookAtMat = mat4.lookAt(eye, [0, 0, 0], [0, 1, 0]);
-            view = mat4.multiply(lookAtMat, rotationMatrix);
+            view = mat4.multiply(lookAtMat, renderState.rotationMatrix);
             view = mat4.translate(view, [-effectiveCenter[0], -effectiveCenter[1], -effectiveCenter[2]]);
         } else {
-            const eyeX = effectiveCenter[0] + distance * Math.cos(rotationX) * Math.sin(rotationY);
-            const eyeY = effectiveCenter[1] + distance * Math.sin(rotationX);
-            const eyeZ = effectiveCenter[2] + distance * Math.cos(rotationX) * Math.cos(rotationY);
+            const eyeX = effectiveCenter[0] + renderState.distance * Math.cos(renderState.rotationX) * Math.sin(renderState.rotationY);
+            const eyeY = effectiveCenter[1] + renderState.distance * Math.sin(renderState.rotationX);
+            const eyeZ = effectiveCenter[2] + renderState.distance * Math.cos(renderState.rotationX) * Math.cos(renderState.rotationY);
             view = mat4.lookAt([eyeX, eyeY, eyeZ], effectiveCenter, [0, 1, 0]);
         }
         
@@ -3476,7 +3396,7 @@ import { initUIEvents } from './js/ui.js';
         let closestCam = null;
         let closestDepth = Infinity;
         
-        for (const cam of cameraImages) {
+        for (const cam of renderState.cameraImages) {
             // Check if cam has corners (image quad)
             if (!cam.corners || cam.corners.length < 4) continue;
             
@@ -3498,10 +3418,10 @@ import { initUIEvents } from './js/ui.js';
             }
         }
         
-        // Fallback: also check distance to camera position for frustum tip clicks
+        // Fallback: also check renderState.distance to camera position for frustum tip clicks
         if (!closestCam) {
             let closestDist = 0.08;
-            for (const cam of cameraImages) {
+            for (const cam of renderState.cameraImages) {
                 const clipPos = transformPoint(mvp, cam.position);
                 if (clipPos[2] < 0 || clipPos[2] > 1) continue;
                 
@@ -3544,7 +3464,7 @@ import { initUIEvents } from './js/ui.js';
     }
     
     function showCameraDetails(cam) {
-        selectedCamera = cam;
+        renderState.selectedCamera = cam;
         
         // Update thumbnail
         const imgPath = `data/fern/images_8/${cam.imageName}`;
@@ -3568,9 +3488,9 @@ import { initUIEvents } from './js/ui.js';
         }
         
         // Intrinsics
-        const intrinsicKeys = Object.keys(cameraIntrinsics);
+        const intrinsicKeys = Object.renderState.keys(renderState.cameraIntrinsics);
         if (intrinsicKeys.length > 0) {
-            const intr = cameraIntrinsics[intrinsicKeys[0]];
+            const intr = renderState.cameraIntrinsics[intrinsicKeys[0]];
             document.getElementById('cam-resolution').textContent = `${intr.width} × ${intr.height}`;
             if (intr.params && intr.params.length >= 1) {
                 document.getElementById('cam-focal').textContent = `${intr.params[0].toFixed(2)} px`;
@@ -3608,17 +3528,17 @@ import { initUIEvents } from './js/ui.js';
             minZ = Math.min(minZ, p.z); maxZ = Math.max(maxZ, p.z);
         }
         
-        center = [(minX+maxX)/2, (minY+maxY)/2, (minZ+maxZ)/2];
-        distance = Math.max(maxX-minX, maxY-minY, maxZ-minZ) * 1.5;
-        baseSceneScale = distance * 0.02;  // Base scale for camera frustums
+        renderState.center = [(minX+maxX)/2, (minY+maxY)/2, (minZ+maxZ)/2];
+        renderState.distance = Math.max(maxX-minX, maxY-minY, maxZ-minZ) * 1.5;
+        renderState.baseSceneScale = renderState.distance * 0.02;  // Base scale for camera frustums
         
-        gl.bindBuffer(gl.ARRAY_BUFFER, pointBuffer);
+        gl.bindBuffer(gl.ARRAY_BUFFER, renderState.pointBuffer);
         gl.bufferData(gl.ARRAY_BUFFER, positions, gl.STATIC_DRAW);
         
-        gl.bindBuffer(gl.ARRAY_BUFFER, colorBuffer);
+        gl.bindBuffer(gl.ARRAY_BUFFER, renderState.colorBuffer);
         gl.bufferData(gl.ARRAY_BUFFER, colors, gl.STATIC_DRAW);
         
-        pointCount = points.length;
+        renderState.pointCount = points.length;
     }
 
     // Load a texture from an image URL
@@ -3642,7 +3562,7 @@ import { initUIEvents } from './js/ui.js';
 
     async function setupCameras(cameras) {
         // Store camera data for dynamic rendering
-        cameraImages = [];
+        renderState.cameraImages = [];
         
         // The images in images_8 folder are named image000.png, image001.png, etc.
         // Sort cameras by name to match them with image indices
@@ -3668,7 +3588,7 @@ import { initUIEvents } from './js/ui.js';
             // Load texture
             const texture = await loadTexture(imagePath);
             
-            cameraImages.push({
+            renderState.cameraImages.push({
                 position: pos,
                 direction: dir,
                 right: right,
@@ -3690,9 +3610,9 @@ import { initUIEvents } from './js/ui.js';
     
     function updateCameraBuffers() {
         const vertices = [];
-        const scale = baseSceneScale * cameraSize;
+        const scale = renderState.baseSceneScale * renderState.cameraSize;
         
-        cameraImages.forEach(cam => {
+        renderState.cameraImages.forEach(cam => {
             const pos = cam.position;
             const dir = cam.direction;
             const right = cam.right;
@@ -3748,9 +3668,9 @@ import { initUIEvents } from './js/ui.js';
             }
         });
         
-        gl.bindBuffer(gl.ARRAY_BUFFER, cameraBuffer);
+        gl.bindBuffer(gl.ARRAY_BUFFER, renderState.cameraBuffer);
         gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(vertices), gl.DYNAMIC_DRAW);
-        cameraVertexCount = vertices.length / 3;
+        renderState.cameraVertexCount = vertices.length / 3;
     }
 
     // Trackball rotation helper
@@ -3781,106 +3701,106 @@ import { initUIEvents } from './js/ui.js';
         ]);
         
         // Apply rotations: new = rotY * rotX * current
-        rotationMatrix = mat4.multiply(mat4.multiply(rotY, rotX), rotationMatrix);
+        renderState.rotationMatrix = mat4.multiply(mat4.multiply(rotY, rotX), renderState.rotationMatrix);
     }
 
     let hasDragged = false;  // Track if we actually moved (not just clicked)
     
     function onMouseDown(e) {
-        isDragging = true;
+        renderState.isDragging = true;
         hasDragged = false;
-        lastMouse = [e.clientX, e.clientY];
+        renderState.lastMouse = [e.clientX, e.clientY];
     }
 
     function onMouseMove(e) {
-        if (!isDragging) return;
-        const dx = e.clientX - lastMouse[0];
-        const dy = e.clientY - lastMouse[1];
+        if (!renderState.isDragging) return;
+        const dx = e.clientX - renderState.lastMouse[0];
+        const dy = e.clientY - renderState.lastMouse[1];
         
         // Mark as dragged if moved more than a few pixels
         if (Math.abs(dx) > 3 || Math.abs(dy) > 3) {
             hasDragged = true;
         }
         
-        if (freeRotation) {
+        if (renderState.freeRotation) {
             applyTrackballRotation(dx, dy);
         } else {
-            rotationY += dx * 0.01;
-            rotationX += dy * 0.01;
-            rotationX = Math.max(-Math.PI/2 + 0.1, Math.min(Math.PI/2 - 0.1, rotationX));
+            renderState.rotationY += dx * 0.01;
+            renderState.rotationX += dy * 0.01;
+            renderState.rotationX = Math.max(-Math.PI/2 + 0.1, Math.min(Math.PI/2 - 0.1, renderState.rotationX));
         }
         
-        lastMouse = [e.clientX, e.clientY];
+        renderState.lastMouse = [e.clientX, e.clientY];
     }
 
     function onMouseUp() {
-        isDragging = false;
+        renderState.isDragging = false;
     }
 
     function onWheel(e) {
         e.preventDefault();
         // Zoom speed scales with movement speed setting
-        const zoomFactor = 1 + (0.1 * moveSpeed);
-        distance *= e.deltaY > 0 ? zoomFactor : (1 / zoomFactor);
-        distance = Math.max(0.1, Math.min(1000, distance));
+        const zoomFactor = 1 + (0.1 * renderState.moveSpeed);
+        renderState.distance *= e.deltaY > 0 ? zoomFactor : (1 / zoomFactor);
+        renderState.distance = Math.max(0.1, Math.min(1000, renderState.distance));
     }
 
     function onTouchStart(e) {
         if (e.touches.length === 1) {
-            isDragging = true;
-            lastMouse = [e.touches[0].clientX, e.touches[0].clientY];
+            renderState.isDragging = true;
+            renderState.lastMouse = [e.touches[0].clientX, e.touches[0].clientY];
         }
     }
 
     function onTouchMove(e) {
         e.preventDefault();
-        if (e.touches.length === 1 && isDragging) {
-            const dx = e.touches[0].clientX - lastMouse[0];
-            const dy = e.touches[0].clientY - lastMouse[1];
+        if (e.touches.length === 1 && renderState.isDragging) {
+            const dx = e.touches[0].clientX - renderState.lastMouse[0];
+            const dy = e.touches[0].clientY - renderState.lastMouse[1];
             
-            if (freeRotation) {
+            if (renderState.freeRotation) {
                 applyTrackballRotation(dx, dy);
             } else {
-                rotationY += dx * 0.01;
-                rotationX += dy * 0.01;
-                rotationX = Math.max(-Math.PI/2 + 0.1, Math.min(Math.PI/2 - 0.1, rotationX));
+                renderState.rotationY += dx * 0.01;
+                renderState.rotationX += dy * 0.01;
+                renderState.rotationX = Math.max(-Math.PI/2 + 0.1, Math.min(Math.PI/2 - 0.1, renderState.rotationX));
             }
             
-            lastMouse = [e.touches[0].clientX, e.touches[0].clientY];
+            renderState.lastMouse = [e.touches[0].clientX, e.touches[0].clientY];
         }
     }
 
     function onTouchEnd() {
-        isDragging = false;
+        renderState.isDragging = false;
     }
 
     // Get camera direction vectors from rotation matrix
     function getCameraDirections() {
-        if (freeRotation) {
+        if (renderState.freeRotation) {
             // Extract forward and right from rotation matrix
-            // rotationMatrix is the rotation applied to the scene, so camera directions are inverse
+            // renderState.rotationMatrix is the rotation applied to the scene, so camera directions are inverse
             const forward = normalize([
-                -rotationMatrix[2],
-                -rotationMatrix[6],
-                -rotationMatrix[10]
+                -renderState.rotationMatrix[2],
+                -renderState.rotationMatrix[6],
+                -renderState.rotationMatrix[10]
             ]);
             const right = normalize([
-                rotationMatrix[0],
-                rotationMatrix[4],
-                rotationMatrix[8]
+                renderState.rotationMatrix[0],
+                renderState.rotationMatrix[4],
+                renderState.rotationMatrix[8]
             ]);
             return { forward, right };
         } else {
-            // For orbit mode, forward is toward center, right is perpendicular
+            // For orbit mode, forward is toward renderState.center, right is perpendicular
             const forward = [
-                -Math.sin(rotationY),
+                -Math.sin(renderState.rotationY),
                 0,
-                -Math.cos(rotationY)
+                -Math.cos(renderState.rotationY)
             ];
             const right = [
-                Math.cos(rotationY),
+                Math.cos(renderState.rotationY),
                 0,
-                -Math.sin(rotationY)
+                -Math.sin(renderState.rotationY)
             ];
             return { forward, right };
         }
@@ -3888,37 +3808,37 @@ import { initUIEvents } from './js/ui.js';
 
     function render() {
         // Auto rotation
-        if (autoRotate && !isDragging) {
-            if (freeRotation) {
+        if (renderState.autoRotate && !renderState.isDragging) {
+            if (renderState.freeRotation) {
                 applyTrackballRotation(0.5, 0);
             } else {
-                rotationY += 0.003;
+                renderState.rotationY += 0.003;
             }
         }
         
         // WASD movement
         const { forward, right } = getCameraDirections();
-        const currentMoveSpeed = moveSpeed * (distance / 10); // Scale speed with distance
+        const currentMoveSpeed = renderState.moveSpeed * (renderState.distance / 10); // Scale speed with renderState.distance
         
-        if (keys.w) {
-            cameraPos[0] += forward[0] * currentMoveSpeed;
-            cameraPos[1] += forward[1] * currentMoveSpeed;
-            cameraPos[2] += forward[2] * currentMoveSpeed;
+        if (renderState.keys.w) {
+            renderState.cameraPos[0] += forward[0] * currentMoveSpeed;
+            renderState.cameraPos[1] += forward[1] * currentMoveSpeed;
+            renderState.cameraPos[2] += forward[2] * currentMoveSpeed;
         }
-        if (keys.s) {
-            cameraPos[0] -= forward[0] * currentMoveSpeed;
-            cameraPos[1] -= forward[1] * currentMoveSpeed;
-            cameraPos[2] -= forward[2] * currentMoveSpeed;
+        if (renderState.keys.s) {
+            renderState.cameraPos[0] -= forward[0] * currentMoveSpeed;
+            renderState.cameraPos[1] -= forward[1] * currentMoveSpeed;
+            renderState.cameraPos[2] -= forward[2] * currentMoveSpeed;
         }
-        if (keys.a) {
-            cameraPos[0] -= right[0] * currentMoveSpeed;
-            cameraPos[1] -= right[1] * currentMoveSpeed;
-            cameraPos[2] -= right[2] * currentMoveSpeed;
+        if (renderState.keys.a) {
+            renderState.cameraPos[0] -= right[0] * currentMoveSpeed;
+            renderState.cameraPos[1] -= right[1] * currentMoveSpeed;
+            renderState.cameraPos[2] -= right[2] * currentMoveSpeed;
         }
-        if (keys.d) {
-            cameraPos[0] += right[0] * currentMoveSpeed;
-            cameraPos[1] += right[1] * currentMoveSpeed;
-            cameraPos[2] += right[2] * currentMoveSpeed;
+        if (renderState.keys.d) {
+            renderState.cameraPos[0] += right[0] * currentMoveSpeed;
+            renderState.cameraPos[1] += right[1] * currentMoveSpeed;
+            renderState.cameraPos[2] += right[2] * currentMoveSpeed;
         }
         
         gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
@@ -3926,81 +3846,81 @@ import { initUIEvents } from './js/ui.js';
         const aspect = canvas.width / canvas.height;
         const projection = mat4.perspective(Math.PI / 3, aspect, 0.01, 1000);
         
-        // Calculate effective center (original center + camera offset)
+        // Calculate effective renderState.center (original renderState.center + camera offset)
         const effectiveCenter = [
-            center[0] + cameraPos[0],
-            center[1] + cameraPos[1],
-            center[2] + cameraPos[2]
+            renderState.center[0] + renderState.cameraPos[0],
+            renderState.center[1] + renderState.cameraPos[1],
+            renderState.center[2] + renderState.cameraPos[2]
         ];
         
         let view;
-        if (freeRotation) {
+        if (renderState.freeRotation) {
             // Use trackball rotation matrix
-            const eye = [0, 0, distance];
+            const eye = [0, 0, renderState.distance];
             const lookAtMat = mat4.lookAt(eye, [0, 0, 0], [0, 1, 0]);
-            view = mat4.multiply(lookAtMat, rotationMatrix);
+            view = mat4.multiply(lookAtMat, renderState.rotationMatrix);
             view = mat4.translate(view, [-effectiveCenter[0], -effectiveCenter[1], -effectiveCenter[2]]);
         } else {
             // Standard orbit controls with axis lock
-            const eyeX = effectiveCenter[0] + distance * Math.cos(rotationX) * Math.sin(rotationY);
-            const eyeY = effectiveCenter[1] + distance * Math.sin(rotationX);
-            const eyeZ = effectiveCenter[2] + distance * Math.cos(rotationX) * Math.cos(rotationY);
+            const eyeX = effectiveCenter[0] + renderState.distance * Math.cos(renderState.rotationX) * Math.sin(renderState.rotationY);
+            const eyeY = effectiveCenter[1] + renderState.distance * Math.sin(renderState.rotationX);
+            const eyeZ = effectiveCenter[2] + renderState.distance * Math.cos(renderState.rotationX) * Math.cos(renderState.rotationY);
             view = mat4.lookAt([eyeX, eyeY, eyeZ], effectiveCenter, [0, 1, 0]);
         }
         
         const mvp = mat4.multiply(projection, view);
         
         // Draw points
-        gl.useProgram(pointProgram);
+        gl.useProgram(renderState.pointProgram);
         
-        const posLoc = gl.getAttribLocation(pointProgram, 'aPosition');
-        const colorLoc = gl.getAttribLocation(pointProgram, 'aColor');
-        const mvpLoc = gl.getUniformLocation(pointProgram, 'uMVP');
-        const sizeLoc = gl.getUniformLocation(pointProgram, 'uPointSize');
+        const posLoc = gl.getAttribLocation(renderState.pointProgram, 'aPosition');
+        const colorLoc = gl.getAttribLocation(renderState.pointProgram, 'aColor');
+        const mvpLoc = gl.getUniformLocation(renderState.pointProgram, 'uMVP');
+        const sizeLoc = gl.getUniformLocation(renderState.pointProgram, 'uPointSize');
         
         gl.uniformMatrix4fv(mvpLoc, false, mvp);
-        gl.uniform1f(sizeLoc, pointSize);
+        gl.uniform1f(sizeLoc, renderState.pointSize);
         
-        gl.bindBuffer(gl.ARRAY_BUFFER, pointBuffer);
+        gl.bindBuffer(gl.ARRAY_BUFFER, renderState.pointBuffer);
         gl.enableVertexAttribArray(posLoc);
         gl.vertexAttribPointer(posLoc, 3, gl.FLOAT, false, 0, 0);
         
-        gl.bindBuffer(gl.ARRAY_BUFFER, colorBuffer);
+        gl.bindBuffer(gl.ARRAY_BUFFER, renderState.colorBuffer);
         gl.enableVertexAttribArray(colorLoc);
         gl.vertexAttribPointer(colorLoc, 3, gl.FLOAT, false, 0, 0);
         
-        gl.drawArrays(gl.POINTS, 0, pointCount);
+        gl.drawArrays(gl.POINTS, 0, renderState.pointCount);
         
         // Draw cameras
-        if (showCameras && cameraImages.length > 0) {
+        if (renderState.showCameras && renderState.cameraImages.length > 0) {
             // Update camera buffers (in case size changed)
             updateCameraBuffers();
             
             // Draw camera frustum lines
-            gl.useProgram(lineProgram);
+            gl.useProgram(renderState.lineProgram);
             
-            const linePosLoc = gl.getAttribLocation(lineProgram, 'aPosition');
-            const lineMvpLoc = gl.getUniformLocation(lineProgram, 'uMVP');
-            const lineColorLoc = gl.getUniformLocation(lineProgram, 'uColor');
+            const linePosLoc = gl.getAttribLocation(renderState.lineProgram, 'aPosition');
+            const lineMvpLoc = gl.getUniformLocation(renderState.lineProgram, 'uMVP');
+            const lineColorLoc = gl.getUniformLocation(renderState.lineProgram, 'uColor');
             
             gl.uniformMatrix4fv(lineMvpLoc, false, mvp);
             gl.uniform3f(lineColorLoc, 0.31, 0.76, 0.97);
             
-            gl.bindBuffer(gl.ARRAY_BUFFER, cameraBuffer);
+            gl.bindBuffer(gl.ARRAY_BUFFER, renderState.cameraBuffer);
             gl.enableVertexAttribArray(linePosLoc);
             gl.vertexAttribPointer(linePosLoc, 3, gl.FLOAT, false, 0, 0);
             
-            gl.drawArrays(gl.LINES, 0, cameraVertexCount);
+            gl.drawArrays(gl.LINES, 0, renderState.cameraVertexCount);
             gl.disableVertexAttribArray(linePosLoc);
             
             // Draw camera images
-            gl.useProgram(textureProgram);
+            gl.useProgram(renderState.textureProgram);
             
-            const texPosLoc = gl.getAttribLocation(textureProgram, 'aPosition');
-            const texCoordLoc = gl.getAttribLocation(textureProgram, 'aTexCoord');
-            const texMvpLoc = gl.getUniformLocation(textureProgram, 'uMVP');
-            const texSamplerLoc = gl.getUniformLocation(textureProgram, 'uTexture');
-            const texOpacityLoc = gl.getUniformLocation(textureProgram, 'uOpacity');
+            const texPosLoc = gl.getAttribLocation(renderState.textureProgram, 'aPosition');
+            const texCoordLoc = gl.getAttribLocation(renderState.textureProgram, 'aTexCoord');
+            const texMvpLoc = gl.getUniformLocation(renderState.textureProgram, 'uMVP');
+            const texSamplerLoc = gl.getUniformLocation(renderState.textureProgram, 'uTexture');
+            const texOpacityLoc = gl.getUniformLocation(renderState.textureProgram, 'uOpacity');
             
             gl.uniformMatrix4fv(texMvpLoc, false, mvp);
             gl.uniform1f(texOpacityLoc, 0.9);
@@ -4008,7 +3928,7 @@ import { initUIEvents } from './js/ui.js';
             
             gl.activeTexture(gl.TEXTURE0);
             
-            for (const cam of cameraImages) {
+            for (const cam of renderState.cameraImages) {
                 if (!cam.texture) continue;
                 
                 gl.bindTexture(gl.TEXTURE_2D, cam.texture);
@@ -4029,48 +3949,48 @@ import { initUIEvents } from './js/ui.js';
         }
         
         // Draw GT cameras (orange)
-        if (showGTCameras && gtCameraBuffer && gtCameraVertexCount > 0) {
+        if (sfmState.showGTCameras && sfmState.gtCameraBuffer && sfmState.gtCameraVertexCount > 0) {
             // Update GT camera buffers with current camera size
             updateGTCameraBuffers();
             
-            gl.useProgram(lineProgram);
+            gl.useProgram(renderState.lineProgram);
             
-            const gtLinePosLoc = gl.getAttribLocation(lineProgram, 'aPosition');
-            const gtLineMvpLoc = gl.getUniformLocation(lineProgram, 'uMVP');
-            const gtLineColorLoc = gl.getUniformLocation(lineProgram, 'uColor');
+            const gtLinePosLoc = gl.getAttribLocation(renderState.lineProgram, 'aPosition');
+            const gtLineMvpLoc = gl.getUniformLocation(renderState.lineProgram, 'uMVP');
+            const gtLineColorLoc = gl.getUniformLocation(renderState.lineProgram, 'uColor');
             
             gl.uniformMatrix4fv(gtLineMvpLoc, false, mvp);
             gl.uniform3f(gtLineColorLoc, 1.0, 0.6, 0.2);  // Orange color
             
-            gl.bindBuffer(gl.ARRAY_BUFFER, gtCameraBuffer);
+            gl.bindBuffer(gl.ARRAY_BUFFER, sfmState.gtCameraBuffer);
             gl.enableVertexAttribArray(gtLinePosLoc);
             gl.vertexAttribPointer(gtLinePosLoc, 3, gl.FLOAT, false, 0, 0);
             
-            gl.drawArrays(gl.LINES, 0, gtCameraVertexCount);
+            gl.drawArrays(gl.LINES, 0, sfmState.gtCameraVertexCount);
             gl.disableVertexAttribArray(gtLinePosLoc);
         }
         
         // Draw GT point cloud
-        if (showGTPoints && gtPointBuffer && gtPointCount > 0) {
-            gl.useProgram(pointProgram);
+        if (sfmState.showGTPoints && sfmState.gtPointBuffer && sfmState.gtPointCount > 0) {
+            gl.useProgram(renderState.pointProgram);
             
-            const gtPosLoc = gl.getAttribLocation(pointProgram, 'aPosition');
-            const gtColorLoc = gl.getAttribLocation(pointProgram, 'aColor');
-            const gtMvpLoc = gl.getUniformLocation(pointProgram, 'uMVP');
-            const gtSizeLoc = gl.getUniformLocation(pointProgram, 'uPointSize');
+            const gtPosLoc = gl.getAttribLocation(renderState.pointProgram, 'aPosition');
+            const gtColorLoc = gl.getAttribLocation(renderState.pointProgram, 'aColor');
+            const gtMvpLoc = gl.getUniformLocation(renderState.pointProgram, 'uMVP');
+            const gtSizeLoc = gl.getUniformLocation(renderState.pointProgram, 'uPointSize');
             
             gl.uniformMatrix4fv(gtMvpLoc, false, mvp);
-            gl.uniform1f(gtSizeLoc, pointSize * 0.8);  // Slightly smaller than SfM points
+            gl.uniform1f(gtSizeLoc, renderState.pointSize * 0.8);  // Slightly smaller than SfM points
             
-            gl.bindBuffer(gl.ARRAY_BUFFER, gtPointBuffer);
+            gl.bindBuffer(gl.ARRAY_BUFFER, sfmState.gtPointBuffer);
             gl.enableVertexAttribArray(gtPosLoc);
             gl.vertexAttribPointer(gtPosLoc, 3, gl.FLOAT, false, 0, 0);
             
-            gl.bindBuffer(gl.ARRAY_BUFFER, gtColorBuffer);
+            gl.bindBuffer(gl.ARRAY_BUFFER, sfmState.gtColorBuffer);
             gl.enableVertexAttribArray(gtColorLoc);
             gl.vertexAttribPointer(gtColorLoc, 3, gl.FLOAT, false, 0, 0);
             
-            gl.drawArrays(gl.POINTS, 0, gtPointCount);
+            gl.drawArrays(gl.POINTS, 0, sfmState.gtPointCount);
         }
         
         requestAnimationFrame(render);

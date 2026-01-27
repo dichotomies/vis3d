@@ -1,28 +1,16 @@
 // ============== UI Module ==============
 
-// UI state variables
-export let currentSelected = [];
-export let selectedPairs = [];
-window.selectedImages = currentSelected; // For compatibility, but will change to pairs later
-window.selectedPairs = selectedPairs; // Make it globally accessible
-export let maxDetectFeatures = 500;
-export let maxDisplayFeatures = 500;
-let currentFeaturePairIndex = 0;
+import { uiState, sfmState } from './state.js';
 
-export let matches = [];
-export let inliers = [];
-export let rotationMatrix = null;
-export let translationVector = null;
-export let intrinsicsMatrix = null;
-export let poseSummary = '';
-export let debugOutput = '';
-export let triangulatedPoints = [];
-export let triangulationStats = {};
-export let cameraStats = {};
-export let reprojectionErrors = [];
-export let gtPoints = [];
-export let gtPointCount = 0;
-export let showGTPoints = false;
+// UI state is accessed via uiState
+
+// For compatibility
+window.selectedImages = uiState.currentSelected;
+window.selectedPairs = uiState.selectedPairs;
+window.detectedFeatures = sfmState.detectedFeatures;
+window.estimatedPose = sfmState.estimatedPose;
+window.featureMatches = sfmState.featureMatches;
+window.loadedImages = sfmState.loadedImages;
 
 // Screen management functions
 export async function showImageSelectionScreen() {
@@ -62,27 +50,27 @@ export async function showImageSelectionScreen() {
     }
 
     // Reset state
-    currentSelected.length = 0;
-    selectedPairs.length = 0;
+    uiState.currentSelected.length = 0;
+    uiState.selectedPairs.length = 0;
     updateSelectionStatus();
 }
 
 // Toggle image selection
 function toggleImageSelection(index, name, cardElement, availableImages) {
-    console.log('toggleImageSelection called with index:', index, 'name:', name, 'current length:', currentSelected.length);
-    const existingIndex = currentSelected.findIndex(img => img.index === index);
+    console.log('toggleImageSelection called with index:', index, 'name:', name, 'current length:', uiState.currentSelected.length);
+    const existingIndex = uiState.currentSelected.findIndex(img => img.index === index);
 
     if (existingIndex !== -1) {
         // Deselect
         console.log('Deselecting image at index', index);
-        currentSelected.splice(existingIndex, 1);
+        uiState.currentSelected.splice(existingIndex, 1);
         cardElement.classList.remove('selected');
-    } else if (currentSelected.length < 2) {
+    } else if (uiState.currentSelected.length < 2) {
         // Select
         console.log('Selecting image at index', index);
         const baseUrl = window.location.protocol === 'file:' ? 'http://localhost:8000' : window.location.origin;
         const absolutePath = baseUrl + availableImages[index].path;
-        currentSelected.push({ index, name, path: absolutePath });
+        uiState.currentSelected.push({ index, name, path: absolutePath });
         cardElement.classList.add('selected');
     } else {
         console.log('Cannot select more than 2 images');
@@ -93,12 +81,12 @@ function toggleImageSelection(index, name, cardElement, availableImages) {
 
 // Update selection status display
 function updateSelectionStatus() {
-    console.log('updateSelectionStatus called, currentSelected.length:', currentSelected.length);
-    document.getElementById('selected-count').textContent = currentSelected.length;
+    console.log('updateSelectionStatus called, uiState.currentSelected.length:', uiState.currentSelected.length);
+    document.getElementById('selected-count').textContent = uiState.currentSelected.length;
 
     const namesSpan = document.getElementById('selected-names');
-    if (currentSelected.length > 0) {
-        namesSpan.textContent = ` (${currentSelected.map(img => img.name).join(', ')})`;
+    if (uiState.currentSelected.length > 0) {
+        namesSpan.textContent = ` (${uiState.currentSelected.map(img => img.name).join(', ')})`;
     } else {
         namesSpan.textContent = '';
     }
@@ -107,7 +95,7 @@ function updateSelectionStatus() {
     document.querySelectorAll('.image-card').forEach(card => {
         const badge = card.querySelector('.selection-badge');
         const cardIndex = parseInt(card.dataset.index);
-        const selOrder = currentSelected.findIndex(img => img.index === cardIndex);
+        const selOrder = uiState.currentSelected.findIndex(img => img.index === cardIndex);
         if (selOrder !== -1) {
             badge.textContent = selOrder + 1;
             badge.style.display = 'flex';
@@ -117,7 +105,7 @@ function updateSelectionStatus() {
     });
 
     // Enable/disable add pair button
-    const addPairDisabled = currentSelected.length !== 2;
+    const addPairDisabled = uiState.currentSelected.length !== 2;
     console.log('addPairDisabled:', addPairDisabled);
     const btn = document.getElementById('btn-add-pair');
     console.log('btn element:', btn);
@@ -131,7 +119,7 @@ function updateSelectionStatus() {
     const debugCount = document.getElementById('debug-images-count');
     console.log('debug-images-count element:', debugCount);
     if (debugCount) {
-        debugCount.textContent = currentSelected.length;
+        debugCount.textContent = uiState.currentSelected.length;
     }
     const debugState = document.getElementById('debug-button-state');
     if (debugState) {
@@ -139,15 +127,15 @@ function updateSelectionStatus() {
     }
     const debugReq = document.getElementById('debug-requirement');
     if (debugReq) {
-        const requirementText = currentSelected.length === 0 ? 'Need 2 images' :
-                               currentSelected.length === 1 ? 'Need 1 more image' :
+        const requirementText = uiState.currentSelected.length === 0 ? 'Need 2 images' :
+                               uiState.currentSelected.length === 1 ? 'Need 1 more image' :
                                'Ready to add pair';
         debugReq.textContent = requirementText;
     }
 
     // Enable/disable detect features button (enabled if at least one pair)
     const detectBtn = document.getElementById('btn-detect-features');
-    if (selectedPairs.length === 0) {
+    if (uiState.selectedPairs.length === 0) {
         detectBtn.setAttribute('disabled', 'true');
     } else {
         detectBtn.removeAttribute('disabled');
@@ -162,7 +150,7 @@ function updateSelectedPairsDisplay() {
     const list = document.getElementById('selected-pairs-list');
     const noPairs = list.querySelector('.no-pairs');
 
-    if (selectedPairs.length === 0) {
+    if (uiState.selectedPairs.length === 0) {
         list.innerHTML = '<p class="no-pairs">No pairs selected yet.</p>';
         return;
     }
@@ -170,7 +158,7 @@ function updateSelectedPairsDisplay() {
     if (noPairs) noPairs.remove();
 
     list.innerHTML = '';
-    selectedPairs.forEach((pair, index) => {
+    uiState.selectedPairs.forEach((pair, index) => {
         const pairItem = document.createElement('div');
         pairItem.className = 'pair-item';
         pairItem.innerHTML = `
@@ -196,7 +184,7 @@ function updateFeaturePairsDisplay(selectedIndex) {
     const list = document.getElementById('feature-selected-pairs-list');
     const noPairs = list.querySelector('.no-pairs');
 
-    if (selectedPairs.length === 0) {
+    if (uiState.selectedPairs.length === 0) {
         list.innerHTML = '<p class="no-pairs">No pairs selected yet.</p>';
         return;
     }
@@ -204,7 +192,7 @@ function updateFeaturePairsDisplay(selectedIndex) {
     if (noPairs) noPairs.remove();
 
     list.innerHTML = '';
-    selectedPairs.forEach((pair, index) => {
+    uiState.selectedPairs.forEach((pair, index) => {
         const pairItem = document.createElement('div');
         pairItem.className = `pair-item ${index === selectedIndex ? 'selected' : ''}`;
         pairItem.dataset.index = index;
@@ -224,31 +212,31 @@ function updateFeaturePairsDisplay(selectedIndex) {
 
 // Add current selected images as a pair
 function addPair() {
-    if (currentSelected.length === 2) {
-        selectedPairs.push([...currentSelected]);
-        currentSelected.length = 0; // Clear current selection
+    if (uiState.currentSelected.length === 2) {
+        uiState.selectedPairs.push([...uiState.currentSelected]);
+        uiState.currentSelected.length = 0; // Clear current selection
         updateSelectionStatus();
     }
 }
 
 // Remove a pair
 function removePair(index) {
-    selectedPairs.splice(index, 1);
+    uiState.selectedPairs.splice(index, 1);
     updateSelectionStatus();
 }
 
 // Update debug output
 export function updateDebugOutput(output) {
-    debugOutput = output || 'No debug info yet.';
-    document.getElementById('debug-output').innerHTML = debugOutput;
+    uiState.debugOutput = output || 'No debug info yet.';
+    document.getElementById('debug-output').innerHTML = uiState.debugOutput;
 }
 
 // Select a pair for feature detection
 function selectFeaturePair(index) {
-    currentFeaturePairIndex = index;
-    updateFeaturePairsDisplay(currentFeaturePairIndex);
+    uiState.currentFeaturePairIndex = index;
+    updateFeaturePairsDisplay(uiState.currentFeaturePairIndex);
 
-    const pairToUse = selectedPairs[index];
+    const pairToUse = uiState.selectedPairs[index];
     window.selectedImages = pairToUse; // Set globally for compatibility
 
     // Update image names in headers
@@ -257,10 +245,10 @@ function selectFeaturePair(index) {
     document.getElementById('feature-stats').textContent = 'Detecting features...';
 
     // Reset sliders
-    document.getElementById('max-detect-slider').value = maxDetectFeatures;
-    document.getElementById('max-detect-value').textContent = maxDetectFeatures;
-    document.getElementById('max-display-slider').value = maxDisplayFeatures;
-    document.getElementById('max-display-value').textContent = maxDisplayFeatures;
+    document.getElementById('max-detect-slider').value = sfmState.maxDetectFeatures;
+    document.getElementById('max-detect-value').textContent = sfmState.maxDetectFeatures;
+    document.getElementById('max-display-slider').value = sfmState.maxDisplayFeatures;
+    document.getElementById('max-display-value').textContent = sfmState.maxDisplayFeatures;
 
     // Call the SfM function from global scope
     if (window.detectAndDisplayFeatures) {
@@ -274,10 +262,10 @@ export function showFeatureDetectionScreen() {
     document.getElementById('feature-detection-screen').classList.remove('hidden');
 
     // Set default to first pair
-    currentFeaturePairIndex = 0;
+    uiState.currentFeaturePairIndex = 0;
 
     // Update the pairs display
-    updateFeaturePairsDisplay(currentFeaturePairIndex);
+    updateFeaturePairsDisplay(uiState.currentFeaturePairIndex);
 
     // Initial selection
     selectFeaturePair(0);
@@ -331,8 +319,8 @@ export function initUIEvents() {
     document.getElementById('btn-back-to-welcome').addEventListener('click', () => {
         document.getElementById('image-selection-screen').classList.add('hidden');
         document.getElementById('welcome-screen').classList.remove('hidden');
-        currentSelected.length = 0;
-        selectedPairs.length = 0;
+        uiState.currentSelected.length = 0;
+        uiState.selectedPairs.length = 0;
         updateSelectionStatus();
     });
     
@@ -342,7 +330,7 @@ export function initUIEvents() {
 
     // SfM screen buttons
     document.getElementById('btn-detect-features').addEventListener('click', () => {
-        if (selectedPairs.length > 0) {
+        if (uiState.selectedPairs.length > 0) {
             showFeatureDetectionScreen();
         }
     });
