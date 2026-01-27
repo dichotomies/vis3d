@@ -1,10 +1,13 @@
 // ============== UI Module ==============
 
 // UI state variables
-export let selectedImages = [];
-window.selectedImages = selectedImages; // Make it globally accessible
+export let currentSelected = [];
+export let selectedPairs = [];
+window.selectedImages = currentSelected; // For compatibility, but will change to pairs later
+window.selectedPairs = selectedPairs; // Make it globally accessible
 export let maxDetectFeatures = 500;
 export let maxDisplayFeatures = 500;
+let currentFeaturePairIndex = 0;
 
 export let matches = [];
 export let inliers = [];
@@ -26,7 +29,8 @@ export async function showImageSelectionScreen() {
     document.getElementById('image-selection-screen').classList.remove('hidden');
 
     try {
-        const response = await fetch('/api/images');
+        const apiUrl = window.location.protocol === 'file:' ? 'http://localhost:8000/api/images' : '/api/images';
+        const response = await fetch(apiUrl);
         const data = await response.json();
         const availableImages = data.images;
 
@@ -34,7 +38,8 @@ export async function showImageSelectionScreen() {
         grid.innerHTML = '';
 
         availableImages.forEach((img, index) => {
-            const absolutePath = window.location.origin + '/' + img.path;
+            const baseUrl = window.location.protocol === 'file:' ? 'http://localhost:8000' : window.location.origin;
+            const absolutePath = baseUrl + img.path;
             const card = document.createElement('div');
             card.className = 'image-card-wrapper';
             card.innerHTML = `
@@ -46,28 +51,41 @@ export async function showImageSelectionScreen() {
             `;
             grid.appendChild(card);
 
-            card.querySelector('.image-card').addEventListener('click', () => {
-                toggleImageSelection(index, img.name, card.querySelector('.image-card'), availableImages);
+            const imageCard = card.querySelector('.image-card');
+            imageCard.addEventListener('click', (event) => {
+                console.log('Image card clicked, index:', index, 'name:', img.name);
+                toggleImageSelection(index, img.name, imageCard, availableImages);
             });
         });
     } catch (error) {
         console.error('Failed to load images:', error);
     }
+
+    // Reset state
+    currentSelected.length = 0;
+    selectedPairs.length = 0;
+    updateSelectionStatus();
 }
 
 // Toggle image selection
 function toggleImageSelection(index, name, cardElement, availableImages) {
-    const existingIndex = selectedImages.findIndex(img => img.index === index);
+    console.log('toggleImageSelection called with index:', index, 'name:', name, 'current length:', currentSelected.length);
+    const existingIndex = currentSelected.findIndex(img => img.index === index);
 
     if (existingIndex !== -1) {
         // Deselect
-        selectedImages.splice(existingIndex, 1);
+        console.log('Deselecting image at index', index);
+        currentSelected.splice(existingIndex, 1);
         cardElement.classList.remove('selected');
-    } else if (selectedImages.length < 2) {
+    } else if (currentSelected.length < 2) {
         // Select
-        const absolutePath = window.location.origin + '/' + availableImages[index].path;
-        selectedImages.push({ index, name, path: absolutePath });
+        console.log('Selecting image at index', index);
+        const baseUrl = window.location.protocol === 'file:' ? 'http://localhost:8000' : window.location.origin;
+        const absolutePath = baseUrl + availableImages[index].path;
+        currentSelected.push({ index, name, path: absolutePath });
         cardElement.classList.add('selected');
+    } else {
+        console.log('Cannot select more than 2 images');
     }
 
     updateSelectionStatus();
@@ -75,11 +93,12 @@ function toggleImageSelection(index, name, cardElement, availableImages) {
 
 // Update selection status display
 function updateSelectionStatus() {
-    document.getElementById('selected-count').textContent = selectedImages.length;
+    console.log('updateSelectionStatus called, currentSelected.length:', currentSelected.length);
+    document.getElementById('selected-count').textContent = currentSelected.length;
 
     const namesSpan = document.getElementById('selected-names');
-    if (selectedImages.length > 0) {
-        namesSpan.textContent = ` (${selectedImages.map(img => img.name).join(', ')})`;
+    if (currentSelected.length > 0) {
+        namesSpan.textContent = ` (${currentSelected.map(img => img.name).join(', ')})`;
     } else {
         namesSpan.textContent = '';
     }
@@ -88,7 +107,7 @@ function updateSelectionStatus() {
     document.querySelectorAll('.image-card').forEach(card => {
         const badge = card.querySelector('.selection-badge');
         const cardIndex = parseInt(card.dataset.index);
-        const selOrder = selectedImages.findIndex(img => img.index === cardIndex);
+        const selOrder = currentSelected.findIndex(img => img.index === cardIndex);
         if (selOrder !== -1) {
             badge.textContent = selOrder + 1;
             badge.style.display = 'flex';
@@ -97,8 +116,125 @@ function updateSelectionStatus() {
         }
     });
 
-    // Enable/disable detect features button
-    document.getElementById('btn-detect-features').disabled = selectedImages.length !== 2;
+    // Enable/disable add pair button
+    const addPairDisabled = currentSelected.length !== 2;
+    console.log('addPairDisabled:', addPairDisabled);
+    const btn = document.getElementById('btn-add-pair');
+    console.log('btn element:', btn);
+    if (addPairDisabled) {
+        btn.setAttribute('disabled', 'true');
+    } else {
+        btn.removeAttribute('disabled');
+    }
+
+    // Update debug panel
+    const debugCount = document.getElementById('debug-images-count');
+    console.log('debug-images-count element:', debugCount);
+    if (debugCount) {
+        debugCount.textContent = currentSelected.length;
+    }
+    const debugState = document.getElementById('debug-button-state');
+    if (debugState) {
+        debugState.textContent = addPairDisabled ? 'Inactive' : 'Active';
+    }
+    const debugReq = document.getElementById('debug-requirement');
+    if (debugReq) {
+        const requirementText = currentSelected.length === 0 ? 'Need 2 images' :
+                               currentSelected.length === 1 ? 'Need 1 more image' :
+                               'Ready to add pair';
+        debugReq.textContent = requirementText;
+    }
+
+    // Enable/disable detect features button (enabled if at least one pair)
+    const detectBtn = document.getElementById('btn-detect-features');
+    if (selectedPairs.length === 0) {
+        detectBtn.setAttribute('disabled', 'true');
+    } else {
+        detectBtn.removeAttribute('disabled');
+    }
+
+    // Update selected pairs list
+    updateSelectedPairsDisplay();
+}
+
+// Update selected pairs display
+function updateSelectedPairsDisplay() {
+    const list = document.getElementById('selected-pairs-list');
+    const noPairs = list.querySelector('.no-pairs');
+
+    if (selectedPairs.length === 0) {
+        list.innerHTML = '<p class="no-pairs">No pairs selected yet.</p>';
+        return;
+    }
+
+    if (noPairs) noPairs.remove();
+
+    list.innerHTML = '';
+    selectedPairs.forEach((pair, index) => {
+        const pairItem = document.createElement('div');
+        pairItem.className = 'pair-item';
+        pairItem.innerHTML = `
+            <div class="pair-info">
+                Pair ${index + 1}: <strong>${pair[0].name}</strong> & <strong>${pair[1].name}</strong>
+            </div>
+            <button class="pair-remove" data-index="${index}">Remove</button>
+        `;
+        list.appendChild(pairItem);
+    });
+
+    // Add event listeners to remove buttons
+    document.querySelectorAll('.pair-remove').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            const index = parseInt(e.target.dataset.index);
+            removePair(index);
+        });
+    });
+}
+
+// Update feature pairs display (selectable)
+function updateFeaturePairsDisplay(selectedIndex) {
+    const list = document.getElementById('feature-selected-pairs-list');
+    const noPairs = list.querySelector('.no-pairs');
+
+    if (selectedPairs.length === 0) {
+        list.innerHTML = '<p class="no-pairs">No pairs selected yet.</p>';
+        return;
+    }
+
+    if (noPairs) noPairs.remove();
+
+    list.innerHTML = '';
+    selectedPairs.forEach((pair, index) => {
+        const pairItem = document.createElement('div');
+        pairItem.className = `pair-item ${index === selectedIndex ? 'selected' : ''}`;
+        pairItem.dataset.index = index;
+        pairItem.innerHTML = `
+            <div class="pair-info">
+                Pair ${index + 1}: <strong>${pair[0].name}</strong> & <strong>${pair[1].name}</strong>
+            </div>
+        `;
+        list.appendChild(pairItem);
+
+        // Make the item clickable
+        pairItem.addEventListener('click', () => {
+            selectFeaturePair(index);
+        });
+    });
+}
+
+// Add current selected images as a pair
+function addPair() {
+    if (currentSelected.length === 2) {
+        selectedPairs.push([...currentSelected]);
+        currentSelected.length = 0; // Clear current selection
+        updateSelectionStatus();
+    }
+}
+
+// Remove a pair
+function removePair(index) {
+    selectedPairs.splice(index, 1);
+    updateSelectionStatus();
 }
 
 // Update debug output
@@ -107,14 +243,17 @@ export function updateDebugOutput(output) {
     document.getElementById('debug-output').innerHTML = debugOutput;
 }
 
-// Screen management functions (SfM screens)
-export function showFeatureDetectionScreen() {
-    document.getElementById('image-selection-screen').classList.add('hidden');
-    document.getElementById('feature-detection-screen').classList.remove('hidden');
+// Select a pair for feature detection
+function selectFeaturePair(index) {
+    currentFeaturePairIndex = index;
+    updateFeaturePairsDisplay(currentFeaturePairIndex);
+
+    const pairToUse = selectedPairs[index];
+    window.selectedImages = pairToUse; // Set globally for compatibility
 
     // Update image names in headers
-    document.getElementById('feature-img1-name').textContent = selectedImages[0].name;
-    document.getElementById('feature-img2-name').textContent = selectedImages[1].name;
+    document.getElementById('feature-img1-name').textContent = pairToUse[0].name;
+    document.getElementById('feature-img2-name').textContent = pairToUse[1].name;
     document.getElementById('feature-stats').textContent = 'Detecting features...';
 
     // Reset sliders
@@ -127,6 +266,21 @@ export function showFeatureDetectionScreen() {
     if (window.detectAndDisplayFeatures) {
         window.detectAndDisplayFeatures();
     }
+}
+
+// Screen management functions (SfM screens)
+export function showFeatureDetectionScreen() {
+    document.getElementById('image-selection-screen').classList.add('hidden');
+    document.getElementById('feature-detection-screen').classList.remove('hidden');
+
+    // Set default to first pair
+    currentFeaturePairIndex = 0;
+
+    // Update the pairs display
+    updateFeaturePairsDisplay(currentFeaturePairIndex);
+
+    // Initial selection
+    selectFeaturePair(0);
 }
 
 export function showFeatureMatchingScreen() {
@@ -177,13 +331,18 @@ export function initUIEvents() {
     document.getElementById('btn-back-to-welcome').addEventListener('click', () => {
         document.getElementById('image-selection-screen').classList.add('hidden');
         document.getElementById('welcome-screen').classList.remove('hidden');
-        selectedImages.length = 0;
+        currentSelected.length = 0;
+        selectedPairs.length = 0;
         updateSelectionStatus();
+    });
+    
+    document.getElementById('btn-add-pair').addEventListener('click', () => {
+        addPair();
     });
 
     // SfM screen buttons
     document.getElementById('btn-detect-features').addEventListener('click', () => {
-        if (selectedImages.length === 2) {
+        if (selectedPairs.length > 0) {
             showFeatureDetectionScreen();
         }
     });

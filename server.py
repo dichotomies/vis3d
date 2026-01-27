@@ -26,6 +26,14 @@ class SfMRequestHandler(http.server.SimpleHTTPRequestHandler):
             # Serve static files
             super().do_GET()
     
+    def do_OPTIONS(self):
+        """Handle OPTIONS requests for CORS."""
+        self.send_response(200)
+        self.send_header('Access-Control-Allow-Origin', '*')
+        self.send_header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
+        self.send_header('Access-Control-Allow-Headers', 'Content-Type')
+        self.end_headers()
+    
     def get_images(self):
         """Get list of available images in the dataset."""
         images_dir = Path('data/fern/images_8')
@@ -53,6 +61,9 @@ class SfMRequestHandler(http.server.SimpleHTTPRequestHandler):
         self.send_response(200)
         self.send_header('Content-Type', 'application/json')
         self.send_header('Content-Length', len(response))
+        self.send_header('Access-Control-Allow-Origin', '*')
+        self.send_header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
+        self.send_header('Access-Control-Allow-Headers', 'Content-Type')
         self.end_headers()
         self.wfile.write(response)
 

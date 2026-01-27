@@ -248,6 +248,92 @@
             position: relative;
         }
         
+        /* Selected Pairs Section */
+        .selected-pairs-section {
+            max-width: 1200px;
+            margin: 40px auto 0;
+            background: rgba(0, 0, 0, 0.4);
+            border-radius: 12px;
+            padding: 20px;
+        }
+        .selected-pairs-section h3 {
+            color: #4fc3f7;
+            margin-bottom: 15px;
+            font-size: 1.2em;
+        }
+        .selected-pairs-list {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        .pair-item {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 8px;
+            padding: 15px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            cursor: pointer;
+            transition: background 0.2s ease;
+        }
+        .pair-item:hover {
+            background: rgba(255, 255, 255, 0.1);
+        }
+        .pair-item.selected {
+            background: rgba(79, 195, 247, 0.2);
+            border-left: 3px solid #4fc3f7;
+        }
+        .pair-info {
+            flex: 1;
+            color: #aaa;
+            font-size: 0.9em;
+        }
+        .pair-info strong {
+            color: #4fc3f7;
+        }
+        .pair-remove {
+            background: #f44336;
+            color: #fff;
+            border: none;
+            border-radius: 6px;
+            padding: 8px 12px;
+            cursor: pointer;
+            font-size: 0.8em;
+            transition: background 0.2s ease;
+        }
+        .pair-remove:hover {
+            background: #d32f2f;
+        }
+        .no-pairs {
+            color: #666;
+            text-align: center;
+            padding: 20px;
+            font-style: italic;
+        }
+
+        /* Debug Panel for Image Selection */
+        #debug-panel {
+            max-width: 1200px;
+            margin: 40px auto 0;
+            background: rgba(0, 0, 0, 0.6);
+            border-radius: 12px;
+            padding: 20px;
+            border: 1px solid #333;
+        }
+        #debug-panel h3 {
+            color: #ff9800;
+            margin-bottom: 15px;
+            font-size: 1em;
+        }
+        .debug-content p {
+            margin: 8px 0;
+            font-size: 0.9em;
+            color: #aaa;
+        }
+        .debug-content strong {
+            color: #4fc3f7;
+        }
+        
         /* SfM Progress Panel */
         #sfm-progress {
             position: fixed;

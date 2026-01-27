@@ -38,16 +38,35 @@
         </div>
         <div class="selection-status">
             <span class="status-text">
-                Selected: <strong><span id="selected-count">0</span>/2</strong> images
+                Select two images for a pair: <strong><span id="selected-count">0</span>/2</strong> images
                 <span id="selected-names"></span>
             </span>
             <div class="selection-actions">
                 <button class="btn btn-secondary" id="btn-back-to-welcome">← Back</button>
+                <button class="btn btn-primary" id="btn-add-pair" disabled>Add Pair</button>
                 <button class="btn btn-primary" id="btn-detect-features" disabled>Detect Features →</button>
             </div>
         </div>
         <div class="image-grid" id="image-grid">
             <!-- Images will be populated dynamically -->
+        </div>
+        
+        <!-- Selected Pairs Section -->
+        <div class="selected-pairs-section" id="selected-pairs-section">
+            <h3>📋 Selected Pairs</h3>
+            <div class="selected-pairs-list" id="selected-pairs-list">
+                <p class="no-pairs">No pairs selected yet.</p>
+            </div>
+        </div>
+
+        <!-- Debug Panel -->
+        <div class="debug-panel" id="debug-panel">
+            <h3>🔧 Debug Information</h3>
+            <div class="debug-content">
+                <p><strong>Images Selected:</strong> <span id="debug-images-count">0</span></p>
+                <p><strong>Add Pair Button:</strong> <span id="debug-button-state">Inactive</span></p>
+                <p><strong>Requirement:</strong> <span id="debug-requirement">Need 2 images</span></p>
+            </div>
         </div>
     </div>
     
@@ -82,7 +101,15 @@
                 <div class="feature-count">Keypoints: <strong id="keypoint-count-2">0</strong></div>
             </div>
         </div>
-        
+
+        <!-- Selected Pairs Section for Feature Detection -->
+        <div class="selected-pairs-section" id="feature-selected-pairs-section">
+            <h3>📋 Selected Pairs</h3>
+            <div class="selected-pairs-list" id="feature-selected-pairs-list">
+                <p class="no-pairs">No pairs selected yet.</p>
+            </div>
+        </div>
+
         <!-- Feature Detection Controls -->
         <div class="feature-controls">
             <div class="control-group">
@@ -2127,9 +2154,19 @@ import { initUIEvents } from './js/ui.js';
         await new Promise(resolve => setTimeout(resolve, 50));
 
         console.log('Loading img1 from:', window.selectedImages[0].path);
-        loadedImages.img1 = await loadImage(window.selectedImages[0].path);
+        try {
+            loadedImages.img1 = await loadImage(window.selectedImages[0].path);
+        } catch (e) {
+            console.error('Failed to load image 1:', e);
+            return;
+        }
         console.log('Loading img2 from:', window.selectedImages[1].path);
-        loadedImages.img2 = await loadImage(window.selectedImages[1].path);
+        try {
+            loadedImages.img2 = await loadImage(window.selectedImages[1].path);
+        } catch (e) {
+            console.error('Failed to load image 2:', e);
+            return;
+        }
         console.log('loadedImages.img1:', loadedImages.img1);
         console.log('loadedImages.img2:', loadedImages.img2);
 
@@ -3233,7 +3270,6 @@ import { initUIEvents } from './js/ui.js';
         console.log('loadImage called with src:', src);
         return new Promise((resolve, reject) => {
             const img = new Image();
-            img.crossOrigin = 'anonymous';
             img.onload = () => {
                 console.log('Image loaded successfully:', img.width, 'x', img.height);
                 resolve(img);
